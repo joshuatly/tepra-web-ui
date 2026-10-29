@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><title>font check</title></head>
+<body>
+<!--
+  フォント選択まわりの動作確認。
+  静的サーバを立てて /test/font-check.html を開くと結果が出る。
+  ヘッドレスでも確認できる:
+    chrome --headless --virtual-time-budget=5000 --dump-dom http://127.0.0.1:8765/test/font-check.html
+-->
+<pre id="out">running…</pre>
+<script type="module">
+import {
+  cssFamily, fontExists, knownFamilies, sortFamilies,
+  hasLocalFontApi, ensureFontLoaded,
+} from '../app/fonts.js';
+import { renderLabel } from '../app/editor.js';
+import { grayscale, toRasterRows } from '../app/raster.js';
+
+const lines = [];
+const say = (s) => lines.push(s);
+let failures = 0;
+function expect(name, cond, extra = '') {
+  if (cond) say(`ok   ${name}`);
+  else { failures++; say(`FAIL ${name} ${extra}`); }
+}
+
+// ---- cssFamily -----------------------------------------------------------
+expect('英数字だけなら引用符なし', cssFamily('Menlo') === 'Menlo', cssFamily('Menlo'));
+expect('空白入りは引用符つき', cssFamily('Hiragino Sans') === '"Hiragino Sans"', cssFamily('Hiragino Sans'));
+expect('日本語名も引用符つき', cssFamily('ヒラギノ角ゴ') === '"ヒラギノ角ゴ"', cssFamily('ヒラギノ角ゴ'));
+expect('引用符は落とす', cssFamily('Ba"d') === '"Bad"', cssFamily('Ba"d'));
+expect('空なら総称フォント', cssFamily('') === 'sans-serif', cssFamily(''));
+
+// ---- fontExists ----------------------------------------------------------
+expect('存在しないフォントは false', fontExists('__no_such_family_xyz__') === false);
+const generic = ['monospace', 'serif', 'sans-serif'].every((g) => !fontExists(g));
+expect('総称名は実フォントとして数えない', generic);
+
+// ---- 一覧 ----------------------------------------------------------------
+const families = knownFamilies();
+expect('同梱フォントを 1 つ以上見つける', families.length > 0, `got ${families.length}`);
+expect('一覧はすべて実在する', families.every(fontExists));
+expect('重複が無い', new Set(families).size === families.length);
+
+const sorted = sortFamilies(['Verdana', 'Hiragino Sans', 'Arial', 'YuMincho']);
+expect('日本語書体らしい名前が先に来る',
+  sorted.indexOf('Hiragino Sans') < sorted.indexOf('Arial')
+  && sorted.indexOf('YuMincho') < sorted.indexOf('Arial'),
+  sorted.join(','));
+
+// ---- フォントを変えると版下が変わる --------------------------------------
+const base = {
+  lines: ['テプラ', 'Web版'],
+  bold: false, italic: false,
+  fontScale: 0.85, lineGapDots: 2,
+  align: 'center',
+  heightDots: 72, dpi: 180,
+  lengthMode: 'auto', fixedLengthMm: 40,
+  paddingMm: 2, border: false,
+  image: null, imagePosition: 'left', imageGapMm: 1.5,
+};
+
+async function rasterOf(family) {
+  const font = `16px ${cssFamily(family)}`;
+  await ensureFontLoaded(font, base.lines.join(''));
+  const { canvas, lengthDots, heightDots } = renderLabel({ ...base, fontFamily: cssFamily(family) });
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const { rows } = toRasterRows(grayscale(ctx.getImageData(0, 0, lengthDots, heightDots)));
+  return { lengthDots, hex: rows.map((r) => [...r].join(',')).join('|') };
+}
+
+// 見た目がはっきり違う 2 つを選ぶ (無ければ持っているものから 2 つ)
+const pickable = families.filter((f) => f !== 'Osaka');
+const a = pickable.find((f) => /Mincho|明朝/i.test(f)) || pickable[0];
+const b = pickable.find((f) => /Gothic|Sans|ゴシック/i.test(f) && f !== a) || pickable[1];
+
+if (a && b) {
+  const ra = await rasterOf(a);
+  const rb = await rasterOf(b);
+  expect(`フォントを変えると版下が変わる (${a} vs ${b})`, ra.hex !== rb.hex);
+  expect(`どちらも黒ドットがある (${a})`, /[1-9]/.test(ra.hex));
+  say(`     ${a}: ${ra.lengthDots} dot / ${b}: ${rb.lengthDots} dot`);
+} else {
+  say('skip 比較できるフォントが 2 つありません');
+}
+
+say('');
+say(`Local Font Access API: ${hasLocalFontApi() ? '使える' : '使えない (代表フォントのみ)'}`);
+say(`検出したフォント ${families.length} 件:`);
+say('  ' + families.join('\n  '));
+say('');
+say(failures === 0 ? `すべて成功 (${lines.filter((l) => l.startsWith('ok')).length} 件)` : `${failures} 件失敗`);
+document.getElementById('out').textContent = lines.join('\n');
+document.title = failures === 0 ? 'PASS' : 'FAIL';
+</script>
+</body>
+</html>

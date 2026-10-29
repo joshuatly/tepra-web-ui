@@ -1,0 +1,28 @@
+# Portainer: Stacks → Add stack → Repository (this repo, compose path docker-compose.yml)
+# or paste this file into the Web editor.
+services:
+  tepra-web:
+    build: .
+    image: tepra-web:latest
+    container_name: tepra-web
+    restart: unless-stopped
+    # Host networking lets "Find on network" broadcast to the printer and avoids
+    # any NAT between the container and the printer's UDP 9100 replies.
+    # The UI is then on http://<docker-host>:8765/ (change PORT below if 8765 is taken).
+    network_mode: host
+    environment:
+      PORT: "8765"
+      # Optional: pre-configure printers (comma separated, "Name=IP[:port][@model]")
+      # TEPRA_PRINTERS: "Label printer=192.168.1.50"
+      TZ: "UTC"
+    volumes:
+      - tepra-data:/data
+
+    # --- Without host networking (e.g. Docker Desktop), use this instead: ---
+    # network_mode: bridge
+    # ports:
+    #   - "8765:8765"
+    # Discovery will not work in bridge mode; enter the printer IP manually.
+
+volumes:
+  tepra-data:

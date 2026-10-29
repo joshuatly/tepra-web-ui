@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2563eb">
+<title>TEPRA Web — label printing</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="app/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>TEPRA Web</h1>
+  <span class="subtitle">Label printing for KING JIM TEPRA PRO</span>
+  <div class="spacer"></div>
+  <div id="conn-state" class="pill pill-off">Not connected</div>
+  <button id="btn-connect" class="primary">Connect</button>
+  <button id="btn-disconnect" hidden>Disconnect</button>
+</header>
+
+<div id="reconnect-banner" class="banner" hidden>
+  <span id="reconnect-message"></span>
+  <button id="btn-reconnect" class="primary" hidden>Reconnect</button>
+  <button id="btn-reconnect-dismiss" class="link">Dismiss</button>
+</div>
+
+<main>
+  <!-- Left: label editor -->
+  <section class="panel" id="panel-edit">
+    <h2>Label</h2>
+
+    <label class="field">
+      <span>Text (one line per row)</span>
+      <textarea id="text" rows="3" spellcheck="false">TEPRA
+Web</textarea>
+    </label>
+
+    <div class="grid2">
+      <label class="field">
+        <span>Font <output id="font-count" class="muted"></output></span>
+        <select id="font"></select>
+      </label>
+      <label class="field">
+        <span>Alignment</span>
+        <select id="align">
+          <option value="center">Center</option>
+          <option value="left">Left</option>
+          <option value="right">Right</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="grid2">
+      <label class="field">
+        <span>Filter fonts</span>
+        <input type="search" id="font-filter" placeholder="e.g. Arial / Mono / Noto" autocomplete="off">
+      </label>
+      <div class="field">
+        <span>Font list</span>
+        <button id="btn-load-fonts" class="wide">Load installed fonts</button>
+      </div>
+    </div>
+
+    <div class="row-checks">
+      <label><input type="checkbox" id="bold" checked> Bold</label>
+      <label><input type="checkbox" id="italic"> Italic</label>
+      <label><input type="checkbox" id="border"> Border</label>
+    </div>
+
+    <label class="field">
+      <span>Text size <output id="font-scale-out">85%</output></span>
+      <input type="range" id="font-scale" min="40" max="100" value="85">
+    </label>
+
+    <label class="field">
+      <span>Line spacing <output id="line-gap-out">2 dot</output></span>
+      <input type="range" id="line-gap" min="0" max="24" value="2">
+    </label>
+
+    <h2>Image</h2>
+    <div class="grid2">
+      <label class="field">
+        <span>File</span>
+        <input type="file" id="image" accept="image/*">
+      </label>
+      <label class="field">
+        <span>Position</span>
+        <select id="image-pos">
+          <option value="left">Left of text</option>
+          <option value="right">Right of text</option>
+        </select>
+      </label>
+    </div>
+    <button id="btn-clear-image" class="link">Remove image</button>
+
+    <h2>Tape &amp; size</h2>
+    <div class="grid2">
+      <label class="field">
+        <span>Model</span>
+        <select id="printer"></select>
+      </label>
+      <label class="field">
+        <span>Tape width</span>
+        <select id="tape"></select>
+      </label>
+    </div>
+    <label class="check-line"><input type="checkbox" id="auto-tape" checked> Match the tape loaded in the printer automatically</label>
+
+    <div class="grid2">
+      <label class="field">
+        <span>Label length</span>
+        <select id="length-mode">
+          <option value="auto">Fit to content</option>
+          <option value="fixed">Fixed</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Fixed length (mm)</span>
+        <input type="number" id="fixed-length" min="4" max="1000" step="1" value="40" disabled>
+      </label>
+    </div>
+
+    <div class="grid2">
+      <label class="field">
+        <span>Side padding (mm)</span>
+        <input type="number" id="padding" min="0" max="50" step="0.5" value="2">
+      </label>
+      <label class="field">
+        <span>Leading tape margin (mm)</span>
+        <input type="number" id="tape-margin" min="0" max="50" step="0.5" value="1">
+      </label>
+    </div>
+
+    <h2>Print settings</h2>
+    <div class="grid2">
+      <label class="field">
+        <span>Copies</span>
+        <input type="number" id="copies" min="1" max="99" value="1">
+      </label>
+      <label class="field">
+        <span>Density (-5 to +5)</span>
+        <input type="number" id="density" min="-5" max="5" value="0">
+      </label>
+    </div>
+
+    <div class="grid2">
+      <label class="field">
+        <span>Cut</span>
+        <select id="tape-cut">
+          <option value="0">After each label</option>
+          <option value="1">After the whole job</option>
+          <option value="2">Don't cut</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Half cut (backing stays joined)</span>
+        <select id="half-cut">
+          <option value="0">Off</option>
+          <option value="1">On</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row-checks">
+      <label><input type="checkbox" id="dither"> Dither (for photos)</label>
+      <label><input type="checkbox" id="flip"> Flip vertically</label>
+    </div>
+  </section>
+
+  <!-- Right: printer, preview and output -->
+  <section class="panel" id="panel-output">
+    <h2>Printer</h2>
+    <div class="segmented" role="radiogroup" aria-label="Connection type">
+      <label><input type="radio" name="conn-kind" value="network" checked> Wi-Fi / LAN</label>
+      <label><input type="radio" name="conn-kind" value="bluetooth"> Bluetooth</label>
+    </div>
+
+    <div id="conn-network">
+      <label class="field">
+        <span>Saved printers</span>
+        <select id="net-printer"><option value="">(none saved yet)</option></select>
+      </label>
+      <div class="grid2">
+        <label class="field">
+          <span>IP address or host name</span>
+          <input type="text" id="net-host" placeholder="192.168.1.50" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">
+          <span>Name</span>
+          <input type="text" id="net-name" placeholder="Label printer" autocomplete="off">
+        </label>
+      </div>
+      <div class="actions">
+        <button id="btn-net-save">Save printer</button>
+        <button id="btn-net-remove" class="link" disabled>Remove</button>
+        <button id="btn-net-discover">Find on network</button>
+      </div>
+      <ul id="net-found" class="found-list" hidden></ul>
+      <p class="muted small">
+        Find the printer's IP address in your router's DHCP client list (or try <em>Find on network</em>),
+        and give it a DHCP reservation so the address doesn't change.
+      </p>
+    </div>
+
+    <div id="conn-bluetooth" hidden>
+      <p class="muted small">Bluetooth Classic (RFCOMM) for SR-R2500P / SR-MK1 / SR-R7900P. Pair the printer
+        with the computer running the server first. Not available inside Docker.</p>
+      <div class="grid2">
+        <label class="field">
+          <span>Device</span>
+          <select id="device"><option value="">(not scanned)</option></select>
+        </label>
+        <label class="field">
+          <span>RFCOMM channel</span>
+          <input type="text" id="channel" placeholder="Auto (from SDP)" inputmode="numeric">
+        </label>
+      </div>
+      <div class="actions">
+        <button id="btn-scan">Scan paired devices</button>
+      </div>
+    </div>
+    <div id="backend-state" class="muted small"></div>
+
+    <h2>Preview</h2>
+    <div class="preview-toolbar">
+      <label><input type="radio" name="preview-mode" value="design" checked> Design</label>
+      <label><input type="radio" name="preview-mode" value="dots"> Printed dots</label>
+      <span class="spacer"></span>
+      <span id="size-info" class="mono"></span>
+    </div>
+    <div class="preview-wrap">
+      <div class="tape">
+        <canvas id="preview"></canvas>
+      </div>
+    </div>
+
+    <h2>Print this label</h2>
+    <div class="actions">
+      <button id="btn-print" class="primary big" disabled>Print</button>
+      <button id="btn-cancel" disabled>Cancel</button>
+      <button id="btn-status" disabled>Refresh status</button>
+      <button id="btn-feed" disabled title="Bluetooth only">Feed</button>
+      <button id="btn-feed-cut" disabled title="Bluetooth only">Feed + cut</button>
+    </div>
+    <div class="progress"><div id="progress-bar"></div></div>
+    <div id="progress-text" class="muted"></div>
+
+    <h2>Printer status</h2>
+    <table class="status" id="status-table">
+      <tbody>
+        <tr><th>State</th><td id="st-state">—</td></tr>
+        <tr><th>Error</th><td id="st-error">—</td></tr>
+        <tr><th>Loaded tape</th><td id="st-tape">—</td></tr>
+        <tr><th>Counters</th><td id="st-buffer">—</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Batch job <output id="job-summary" class="muted"></output></h2>
+    <p class="muted small">Collect several labels and print them in one go. Items keep their design only,
+      so they are re-rendered for whatever model and tape you print with.</p>
+    <div class="actions">
+      <button id="btn-job-add">Add current label</button>
+      <button id="btn-job-update" disabled>Overwrite selected</button>
+      <button id="btn-job-edit" disabled>Load selected into editor</button>
+    </div>
+    <ol id="job-list" class="job-list"></ol>
+    <div class="actions">
+      <button id="btn-job-print" class="primary" disabled>Print batch</button>
+      <label class="inline-field">Sets
+        <input type="number" id="job-sets" min="1" max="99" value="1">
+      </label>
+      <button id="btn-job-save" disabled>Save batch</button>
+      <button id="btn-job-open">Open batch</button>
+      <button id="btn-job-clear" class="link" disabled>Clear all</button>
+      <input type="file" id="job-file" accept="application/json,.json" hidden>
+    </div>
+
+    <details class="advanced">
+      <summary>Advanced</summary>
+      <div class="actions">
+        <button id="btn-download">Save command bytes (.bin)</button>
+        <button id="btn-hex">Hex dump</button>
+      </div>
+    </details>
+
+    <h2>Log</h2>
+    <pre id="log" class="log"></pre>
+  </section>
+</main>
+
+<div class="mobile-printbar">
+  <span id="mobile-info" class="muted"></span>
+  <button id="btn-print-mobile" class="primary" disabled>Print</button>
+</div>
+
+<dialog id="hex-dialog">
+  <h3>Command bytes</h3>
+  <pre id="hex-out" class="log mono"></pre>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
+
+<footer>
+  <p>
+    Unofficial tool, not affiliated with KING JIM. Built on
+    <a href="https://github.com/nikachu2012/tepra_web">nikachu2012/tepra_web</a> (protocol analysis in
+    <a href="PROTOCOL.md">PROTOCOL.md</a>) with the Wi-Fi protocol from
+    <a href="https://github.com/takonomura/tepra-web">takonomura/tepra-web</a> and
+    <a href="https://github.com/hikalium/sr5900p">hikalium/sr5900p</a>.
+  </p>
+</footer>
+
+<script type="module" src="app/main.js"></script>
+</body>
+</html>

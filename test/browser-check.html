@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><title>browser check</title></head>
+<body>
+<!--
+  ブラウザ側 (Canvas を使う部分) の動作確認。
+  静的サーバを立てて /test/browser-check.html を開くと結果が出る。
+  ヘッドレスでも確認できる:
+    chrome --headless=new --dump-dom http://localhost:8765/test/browser-check.html
+-->
+<pre id="out">running…</pre>
+<script type="module">
+import { renderLabel } from '../app/editor.js';
+import { grayscale, toRasterRows, contentMarginDots } from '../app/raster.js';
+import { buildJobBytes, toHex } from '../app/protocol.js';
+import { printableDots } from '../app/models.js';
+
+const lines = [];
+const say = (s) => lines.push(s);
+let failures = 0;
+function expect(name, cond, extra = '') {
+  if (cond) say(`ok   ${name}`);
+  else { failures++; say(`FAIL ${name} ${extra}`); }
+}
+
+const dpi = 180;
+const heightDots = printableDots(4, dpi, 18); // SR-R5600P / 12mm
+expect('12mm の印字ドット数 = 72', heightDots === 72, `got ${heightDots}`);
+
+const { canvas, lengthDots } = renderLabel({
+  lines: ['テプラ', 'Web版'],
+  fontFamily: 'sans-serif',
+  bold: true, italic: false,
+  fontScale: 0.85, lineGapDots: 2,
+  align: 'center',
+  heightDots, dpi,
+  lengthMode: 'fixed', fixedLengthMm: 40,
+  paddingMm: 2, border: false,
+  image: null, imagePosition: 'left', imageGapMm: 1.5,
+});
+
+expect('固定長 40mm = 283 dot', lengthDots === Math.round(40 / 25.4 * dpi), `got ${lengthDots}`);
+expect('キャンバスの向き', canvas.width === lengthDots && canvas.height === heightDots);
+
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const img = grayscale(ctx.getImageData(0, 0, canvas.width, canvas.height));
+const { rows, widthDots } = toRasterRows(img);
+
+expect('ラスタ行数 = ラベル長', rows.length === lengthDots, `got ${rows.length}`);
+expect('1 行のバイト数', rows[0].length === ((heightDots + 7) >> 3), `got ${rows[0].length}`);
+expect('黒ドットが存在する', rows.some((r) => r.some((b) => b !== 0)));
+
+const marginDots = contentMarginDots(1, dpi, lengthDots);
+expect('テープ送り余白 1mm = 7 dot', marginDots === 7, `got ${marginDots}`);
+
+const page = { lengthDots, widthDots, marginDots, rows };
+const bytes = buildJobBytes([page], {
+  copies: 1, tapeCut: 0, halfCut: 0, density: 0, priorityPrint: false,
+});
+
+const expectedSize =
+  6 + 8 +                                    // reset + status
+  39 +                                       // ジョブ環境
+  18 +                                       // ページ環境
+  rows.length * (8 + rows[0].length) +       // ラスタ
+  1 +                                        // FF
+  6;                                         // 印刷終了
+expect('ジョブ全体のバイト数', bytes.length === expectedSize, `got ${bytes.length}, want ${expectedSize}`);
+
+say('');
+say(`先頭 96 バイト:`);
+say(toHex(bytes.subarray(0, 96)));
+say('');
+say(failures === 0 ? `すべて成功 (${lines.filter((l) => l.startsWith('ok')).length} 件)` : `${failures} 件失敗`);
+document.getElementById('out').textContent = lines.join('\n');
+document.title = failures === 0 ? 'PASS' : 'FAIL';
+</script>
+</body>
+</html>
