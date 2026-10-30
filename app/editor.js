@@ -3,10 +3,13 @@
 // PrintController が扱うビットマップと同じ向き。
 
 import { mmToDots } from './raster.js';
+import { parseSections, layoutSections } from './layout.js';
+import { drawIcon, isIconId } from './icons.js';
 
 /**
  * @typedef {Object} LabelSpec
- * @property {string[]} lines        本文 (1 行 1 要素)
+ * @property {string[]} lines        本文 (1 行 1 要素)。"---" の行でセクションを区切り、
+ *                                   "[tabler:plug]" でアイコンを入れる (layout.js)
  * @property {string} fontFamily
  * @property {boolean} bold
  * @property {boolean} italic
@@ -19,12 +22,15 @@ import { mmToDots } from './raster.js';
  * @property {number} fixedLengthMm
  * @property {number} paddingMm      版下の左右余白
  * @property {boolean} border        枠線
+ * @property {boolean} [dividers]    セクションの間に縦線を引く
+ * @property {number} [sectionGapMm] セクションの間隔
  * @property {HTMLImageElement|null} image
  * @property {'left'|'right'} imagePosition
  * @property {number} imageGapMm
  */
 
 const MIN_LENGTH_DOTS = 8;
+const DEFAULT_SECTION_GAP_MM = 2;
 
 function fontString(spec, pxSize) {
   const style = spec.italic ? 'italic ' : '';
@@ -32,29 +38,30 @@ function fontString(spec, pxSize) {
   return `${style}${weight}${pxSize}px ${spec.fontFamily}`;
 }
 
-/** 各行のフォントサイズ (px) と縦位置 (ベースライン) を決める */
-function layoutLines(spec) {
-  const lines = spec.lines.length ? spec.lines : [''];
-  const inner = spec.border ? spec.heightDots - 6 : spec.heightDots;
-  const totalGap = spec.lineGapDots * (lines.length - 1);
-  const slot = Math.max(4, (inner - totalGap) / lines.length);
-  const fontPx = Math.max(4, Math.floor(slot * spec.fontScale));
-  const top = (spec.heightDots - (slot * lines.length + totalGap)) / 2;
-  return lines.map((text, i) => ({
-    text,
-    fontPx,
-    // ベースラインは中央揃え (textBaseline = 'middle') で扱う
-    centerY: top + slot * i + slot / 2 + spec.lineGapDots * i,
-  }));
+/** 文字幅の測定。同じ大きさの測定が続くので font の設定を使い回す。 */
+function measurer(ctx, spec) {
+  let current = '';
+  return (text, fontPx) => {
+    const font = fontString(spec, fontPx);
+    if (font !== current) { ctx.font = font; current = font; }
+    return ctx.measureText(text).width;
+  };
 }
 
-function measureContentWidth(ctx, spec, layout) {
-  let max = 0;
-  for (const l of layout) {
-    ctx.font = fontString(spec, l.fontPx);
-    max = Math.max(max, ctx.measureText(l.text).width);
-  }
-  return Math.ceil(max);
+/** 本文の組版。maxWidth を渡すとそこに収まるよう縮める。 */
+function layoutText(spec, ctx, maxWidth) {
+  const heightDots = Math.max(1, Math.floor(spec.heightDots));
+  return layoutSections(parseSections(spec.lines.join('\n')), {
+    heightDots,
+    innerDots: spec.border ? heightDots - 6 : heightDots,
+    lineGapDots: spec.lineGapDots,
+    fontScale: spec.fontScale,
+    sectionGapDots: mmToDots(spec.sectionGapMm ?? DEFAULT_SECTION_GAP_MM, spec.dpi),
+    align: spec.align,
+    measure: measurer(ctx, spec),
+    isIcon: isIconId,
+    maxWidth,
+  });
 }
 
 /**
@@ -66,11 +73,6 @@ export function renderLabel(spec) {
   const heightDots = Math.max(1, Math.floor(spec.heightDots));
   const padding = mmToDots(spec.paddingMm, spec.dpi);
 
-  // まず測定用のコンテキストで必要な長さを求める
-  const probe = document.createElement('canvas').getContext('2d');
-  const layout = layoutLines(spec);
-  const textWidth = measureContentWidth(probe, spec, layout);
-
   let imageWidth = 0;
   let imageGap = 0;
   if (spec.image) {
@@ -78,13 +80,18 @@ export function renderLabel(spec) {
     imageWidth = Math.ceil(spec.image.naturalWidth * scale);
     imageGap = mmToDots(spec.imageGapMm, spec.dpi);
   }
+  const imageSpace = imageWidth + (imageWidth ? imageGap : 0);
 
-  const contentWidth = textWidth + imageWidth + (imageWidth ? imageGap : 0);
+  // まず測定用のコンテキストで必要な長さを求める。固定長なら、はみ出す本文は縮めて収める。
+  const probe = document.createElement('canvas').getContext('2d');
   let lengthDots;
+  let layout;
   if (spec.lengthMode === 'fixed') {
     lengthDots = Math.max(MIN_LENGTH_DOTS, mmToDots(spec.fixedLengthMm, spec.dpi));
+    layout = layoutText(spec, probe, Math.max(1, lengthDots - padding * 2 - imageSpace));
   } else {
-    lengthDots = Math.max(MIN_LENGTH_DOTS, contentWidth + padding * 2);
+    layout = layoutText(spec, probe, null);
+    lengthDots = Math.max(MIN_LENGTH_DOTS, layout.width + imageSpace + padding * 2);
   }
 
   const canvas = document.createElement('canvas');
@@ -116,15 +123,37 @@ export function renderLabel(spec) {
     }
   }
 
+  // 本文全体の置き場所。セクション内の行の揃えは layout が済ませている。
   const areaWidth = Math.max(0, textRight - textLeft);
-  for (const l of layout) {
-    if (!l.text) continue;
-    ctx.font = fontString(spec, l.fontPx);
-    const w = ctx.measureText(l.text).width;
-    let x = textLeft;
-    if (spec.align === 'center') x = textLeft + (areaWidth - w) / 2;
-    else if (spec.align === 'right') x = textRight - w;
-    ctx.fillText(l.text, x, l.centerY);
+  const free = areaWidth - layout.width;
+  const left = textLeft + (spec.align === 'center' ? free / 2 : spec.align === 'right' ? free : 0);
+
+  for (const section of layout.sections) {
+    for (const line of section.lines) {
+      ctx.font = fontString(spec, line.fontPx);
+      for (const run of line.runs) {
+        const x = left + line.x + run.x;
+        if (run.icon) {
+          drawIcon(ctx, run.icon, x, line.centerY - line.fontPx / 2, line.fontPx, { bold: spec.bold });
+        } else {
+          ctx.fillText(run.text, x, line.centerY);
+        }
+      }
+    }
+  }
+
+  // セクションの区切り線は間隔のちょうど真ん中に、枠線の内側いっぱいに引く
+  if (spec.dividers && layout.sections.length > 1) {
+    const inset = spec.border ? 3 : 0;
+    ctx.lineWidth = 2;
+    for (let i = 1; i < layout.sections.length; i++) {
+      const prev = layout.sections[i - 1];
+      const x = Math.round(left + (prev.x + prev.width + layout.sections[i].x) / 2);
+      ctx.beginPath();
+      ctx.moveTo(x, inset);
+      ctx.lineTo(x, heightDots - inset);
+      ctx.stroke();
+    }
   }
 
   return { canvas, lengthDots, heightDots };

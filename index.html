@@ -36,6 +36,11 @@
       <textarea id="text" rows="3" spellcheck="false">TEPRA
 Web</textarea>
     </label>
+    <div class="text-tools">
+      <button id="btn-insert-icon" data-i18n>Insert icon</button>
+      <button id="btn-new-section" data-i18n>New section</button>
+    </div>
+    <p class="muted" data-i18n>A line with only --- starts a new section. Sections sit side by side, and each one sizes its own lines to fill the tape.</p>
 
     <div class="grid2">
       <label class="field">
@@ -67,6 +72,7 @@ Web</textarea>
       <label><input type="checkbox" id="bold" checked> <span data-i18n>Bold</span></label>
       <label><input type="checkbox" id="italic"> <span data-i18n>Italic</span></label>
       <label><input type="checkbox" id="border"> <span data-i18n>Border</span></label>
+      <label><input type="checkbox" id="dividers"> <span data-i18n>Section dividers</span></label>
     </div>
 
     <label class="field">
@@ -294,6 +300,16 @@ Web</textarea>
   <span id="mobile-info" class="muted"></span>
   <button id="btn-print-mobile" class="primary" disabled data-i18n>Print</button>
 </div>
+
+<dialog id="icon-dialog" class="icon-dialog">
+  <div class="icon-head">
+    <input type="search" id="icon-search" placeholder="Search icons (English or Japanese)" data-i18n-placeholder autocomplete="off">
+    <form method="dialog"><button data-i18n>Close</button></form>
+  </div>
+  <div id="icon-tabs" class="icon-tabs" role="tablist"></div>
+  <div id="icon-grid" class="icon-grid"></div>
+  <p id="icon-info" class="muted"></p>
+</dialog>
 
 <dialog id="hex-dialog">
   <h3 data-i18n>Command bytes</h3>

@@ -7,6 +7,7 @@
 // ラスタを持ち回らないぶんファイルも小さい。
 
 import { t } from './i18n.js';
+import { SECTION_BREAK } from './layout.js';
 
 export const JOB_FORMAT = 'tepra-web/job@1';
 
@@ -59,6 +60,7 @@ export function normalizeDesign(raw = {}) {
     paddingMm: num(raw.paddingMm, 0, 50, 2),
     tapeMarginMm: num(raw.tapeMarginMm, 0, 50, 1),
     border: !!raw.border,
+    dividers: !!raw.dividers,
     dither: !!raw.dither,
     flip: !!raw.flip,
     imageDataUrl: imageUrl(raw.imageDataUrl),
@@ -69,7 +71,7 @@ export function normalizeDesign(raw = {}) {
 /** 一覧に出す短い見出し。本文の 1 行目から作る。 */
 export function itemLabel(item) {
   if (item.name) return item.name;
-  const firstLine = item.design.text.split('\n').find((l) => l.trim());
+  const firstLine = item.design.text.split('\n').find((l) => l.trim() && l.trim() !== SECTION_BREAK);
   if (firstLine) return firstLine.trim().slice(0, 24);
   return item.design.imageDataUrl ? t('(image only)') : t('(empty label)');
 }

@@ -11,6 +11,10 @@ import {
   grayscale, ditherFloydSteinberg, toRasterRows, contentMarginDots, dotsToMm,
 } from './raster.js';
 import { renderLabel, drawPreview, drawBinarizedPreview } from './editor.js';
+import { SECTION_BREAK, iconIds } from './layout.js';
+import {
+  ICON_TABS, loadIcons, iconsLoaded, iconSvg, iconsInTab, searchIcons,
+} from './icons.js';
 import {
   cssFamily, hasLocalFontApi, localFontPermission,
   queryLocalFamilies, knownFamilies, sortFamilies, ensureFontLoaded,
@@ -494,6 +498,7 @@ function readDesignFromUI() {
     paddingMm: Number($('padding').value),
     tapeMarginMm: Number($('tape-margin').value),
     border: $('border').checked,
+    dividers: $('dividers').checked,
     dither: $('dither').checked,
     flip: $('flip').checked,
     imageDataUrl: labelImageUrl,
@@ -519,6 +524,7 @@ async function applyDesignToUI(design) {
   $('padding').value = String(design.paddingMm);
   $('tape-margin').value = String(design.tapeMarginMm);
   $('border').checked = design.border;
+  $('dividers').checked = design.dividers;
   $('dither').checked = design.dither;
   $('flip').checked = design.flip;
   $('image-pos').value = design.imagePosition;
@@ -529,6 +535,7 @@ async function applyDesignToUI(design) {
   $('image').value = '';
 
   await ensureFontLoaded(`16px ${cssFamily(design.fontFamily)}`, design.text || FONT_SAMPLE);
+  await ensureIcons(design.text);
 }
 
 /** data URL / object URL から HTMLImageElement を作る */
@@ -559,6 +566,7 @@ function specFrom(design, printer, tapeCode, image) {
     fixedLengthMm: design.fixedLengthMm,
     paddingMm: design.paddingMm,
     border: design.border,
+    dividers: design.dividers,
     image,
     imagePosition: design.imagePosition,
     imageGapMm: 1.5,
@@ -599,6 +607,7 @@ function buildPage() {
 
 /** ジョブの項目を、いまの機種・テープ幅で描く */
 async function buildItemPage(item) {
+  if (!await ensureIcons(item.design.text)) return null;
   const image = item.design.imageDataUrl
     ? await loadImage(item.design.imageDataUrl).catch(() => null)
     : null;
@@ -1104,6 +1113,8 @@ $('btn-print').addEventListener('click', async () => {
   // フォントが未読み込みのまま描くと canvas が黙って代替フォントに差し替える。
   // 印字は取り返しがつかないので、ここで必ず読み込みを待ってから版下を作り直す。
   await ensureFontLoaded(`16px ${cssFamily($('font').value)}`, $('text').value || FONT_SAMPLE);
+  // アイコンも同じ。読み込み前に描くと空白のまま印字される。
+  if (!await ensureIcons($('text').value)) return;
   const built = buildPage();
   lastRender = built;
   if (!built) { log(t('Nothing printable for this tape width'), 'err'); return; }
@@ -1322,7 +1333,7 @@ $('font').addEventListener('change', () => useFont($('font').value));
 $('font-filter').addEventListener('input', () => renderFontOptions());
 $('btn-load-fonts').addEventListener('click', () => loadLocalFonts());
 
-for (const id of ['text', 'align', 'bold', 'italic', 'border', 'tape',
+for (const id of ['text', 'align', 'bold', 'italic', 'border', 'dividers', 'tape',
                   'fixed-length', 'padding', 'tape-margin', 'dither', 'flip', 'image-pos']) {
   $(id).addEventListener('input', refresh);
   $(id).addEventListener('change', refresh);
@@ -1330,6 +1341,99 @@ for (const id of ['text', 'align', 'bold', 'italic', 'border', 'tape',
 for (const el of document.querySelectorAll('input[name=preview-mode]')) {
   el.addEventListener('change', refresh);
 }
+
+// ---- アイコンとセクション -------------------------------------------------
+
+/**
+ * 本文にアイコンがあれば icons.json の読み込みを待つ。読めなかったら false。
+ * 読み込みが済んだら描き直す (読み込み前のプレビューはアイコンの場所が空白)。
+ */
+async function ensureIcons(text) {
+  if (iconsLoaded() || !iconIds(text).length) return true;
+  try {
+    await loadIcons();
+    invalidateJobPages();
+    refresh();
+    return true;
+  } catch (err) {
+    log(t('Could not load the icons: {error}', { error: err.message }), 'err');
+    return false;
+  }
+}
+
+/** textarea のカーソル位置に文字列を入れる */
+function insertAtCursor(textarea, text) {
+  const { selectionStart: start, selectionEnd: end, value } = textarea;
+  textarea.value = value.slice(0, start) + text + value.slice(end);
+  textarea.selectionStart = textarea.selectionEnd = start + text.length;
+  textarea.focus();
+  refresh();
+}
+
+let iconTab = ICON_TABS[0].id;
+
+function renderIconTabs() {
+  const box = $('icon-tabs');
+  box.replaceChildren(...ICON_TABS.map((tab) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.role = 'tab';
+    b.textContent = t(tab.label);
+    b.setAttribute('aria-selected', String(tab.id === iconTab && !$('icon-search').value.trim()));
+    b.addEventListener('click', () => {
+      iconTab = tab.id;
+      $('icon-search').value = '';
+      renderIconGrid();
+    });
+    return b;
+  }));
+}
+
+function renderIconGrid() {
+  renderIconTabs();
+  const query = $('icon-search').value.trim();
+  const ids = query ? searchIcons(query) : iconsInTab(iconTab);
+  $('icon-grid').replaceChildren(...ids.map((id) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.title = id;
+    b.innerHTML = iconSvg(id); // icons.json は自前で生成したデータ
+    b.addEventListener('click', () => {
+      $('icon-dialog').close();
+      insertAtCursor($('text'), `[${id}]`);
+    });
+    return b;
+  }));
+  $('icon-info').textContent = query && !ids.length
+    ? t('No icons match “{query}”', { query })
+    : t('{n} icons. Click one to insert it at the cursor.', { n: ids.length });
+}
+
+$('btn-insert-icon').addEventListener('click', async () => {
+  try {
+    await loadIcons();
+  } catch (err) {
+    log(t('Could not load the icons: {error}', { error: err.message }), 'err');
+    return;
+  }
+  renderIconGrid();
+  $('icon-dialog').showModal();
+  $('icon-search').focus();
+});
+$('icon-search').addEventListener('input', () => renderIconGrid());
+
+$('btn-new-section').addEventListener('click', () => {
+  const ta = $('text');
+  const before = ta.value.slice(0, ta.selectionStart);
+  const after = ta.value.slice(ta.selectionEnd);
+  // 区切りは必ず単独の行にする。後ろが既に改行なら足さずにその先へカーソルを置く
+  // (空行を作るとその行もセクションの 1 行に数えられて文字が小さくなる)。
+  insertAtCursor(ta, `${before && !before.endsWith('\n') ? '\n' : ''}${SECTION_BREAK}${after.startsWith('\n') ? '' : '\n'}`);
+  if (after.startsWith('\n')) ta.selectionStart = ta.selectionEnd = ta.selectionStart + 1;
+});
+
+// 手で "[tabler:…]" と書いたときも、アイコンの読み込みを始める
+$('text').addEventListener('input', () => { ensureIcons($('text').value); });
 
 // ---- 言語 ---------------------------------------------------------------
 

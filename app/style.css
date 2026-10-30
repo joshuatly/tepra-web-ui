@@ -262,6 +262,32 @@ dialog h3 { margin: 0 0 10px; font-size: 14px; }
 dialog .log { max-height: 60vh; }
 dialog form { margin-top: 12px; text-align: right; }
 
+/* ---- テキストの道具とアイコン選択 ---- */
+.text-tools { display: flex; gap: 8px; margin: -4px 0 4px; flex-wrap: wrap; }
+.icon-dialog { width: min(760px, 92vw); }
+.icon-head { display: flex; gap: 8px; align-items: center; }
+.icon-head input { flex: 1; }
+.icon-head form { margin: 0; }
+.icon-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+.icon-tabs button[aria-selected=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 6px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+.icon-grid button {
+  aspect-ratio: 1;
+  padding: 8px;
+  background: #fff;
+  color: #000;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.icon-grid button:hover, .icon-grid button:focus-visible { border-color: var(--accent); }
+.icon-grid svg { width: 100%; height: 100%; display: block; }
+
 footer {
   padding: 0 20px 30px;
   color: var(--muted);
