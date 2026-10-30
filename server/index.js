@@ -16,6 +16,8 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import zlib from 'node:zlib';
 import { findPrinter, tapeWidthLabel } from '../app/models.js';
 import { buildNetworkJobBytes, TapeCut } from '../app/protocol.js';
 import { NetworkPrinter, discover, describeStatus, DEFAULT_PORT } from './network.js';
@@ -63,7 +65,7 @@ const MIME = {
 
 /** Only these paths are served; everything else (package.json, data/, server/) stays private. */
 const PUBLIC = [/^index\.html$/, /^favicon\.svg$/, /^manifest\.webmanifest$/, /^PROTOCOL\.md$/,
-  /^app\/[\w.-]+\.(js|css)$/, /^test\/[\w.-]+\.html$/];
+  /^app\/[\w.-]+\.(js|css)$/, /^app\/icons\.json$/, /^test\/[\w.-]+\.html$/];
 
 // ---- State ----------------------------------------------------------------
 
@@ -216,6 +218,16 @@ async function readJson(req) {
   try { return JSON.parse(text || '{}'); } catch { throw httpError(400, 'Invalid JSON body'); }
 }
 
+/** Compressed copies of large static files, keyed by path and size */
+const gzipCache = new Map();
+async function gzipCached(rel, data) {
+  const key = `${rel}:${data.length}`;
+  if (!gzipCache.has(key)) {
+    gzipCache.set(key, await promisify(zlib.gzip)(data, { level: 9 }));
+  }
+  return gzipCache.get(key);
+}
+
 async function serveStatic(req, res, pathname) {
   let rel;
   try { rel = decodeURIComponent(pathname).replace(/^\/+/, '') || 'index.html'; } catch { rel = ''; }
@@ -225,12 +237,19 @@ async function serveStatic(req, res, pathname) {
     return;
   }
   try {
-    const data = await fs.readFile(path.join(ROOT, rel));
-    res.writeHead(200, {
+    let data = await fs.readFile(path.join(ROOT, rel));
+    const headers = {
       'Content-Type': MIME[path.extname(rel)] || 'application/octet-stream',
-      'Content-Length': data.length,
       'Cache-Control': 'no-cache',
-    });
+    };
+    // icons.json is ~2 MB and compresses to a quarter of that
+    if (data.length > 64 * 1024 && /\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
+      data = await gzipCached(rel, data);
+      headers['Content-Encoding'] = 'gzip';
+      headers.Vary = 'Accept-Encoding';
+    }
+    headers['Content-Length'] = data.length;
+    res.writeHead(200, headers);
     res.end(req.method === 'HEAD' ? undefined : data);
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
