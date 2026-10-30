@@ -40,11 +40,8 @@ stream. The server opens the print session with the printer and streams the job 
 ## Run it in Portainer
 
 1. **Stacks → Add stack**
-2. Either
-   - **Repository**: point it at this Git repository, compose path `docker-compose.yml`
-     (Portainer builds the image), or
-   - **Web editor**: paste `docker-compose.yml`. If CI has published the image, replace
-     `build: .` with `image: ghcr.io/joshuatly/tepra-web-ui:latest`.
+2. **Repository**: point it at this Git repository, compose path `docker-compose.yml`
+   (Portainer builds the image). No prebuilt image is published.
 3. Optionally set `TEPRA_PRINTERS` (see below) so the printer is already there on first load.
 4. Deploy, then open `http://<docker-host>:8765/`.
 
