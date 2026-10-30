@@ -17,12 +17,35 @@ services:
       TZ: "UTC"
     volumes:
       - tepra-data:/data
+    # Polls the app's /healthz endpoint; Portainer and `docker ps` show the
+    # container as healthy/unhealthy. Uses $PORT so it follows the setting above.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- \"http://127.0.0.1:$${PORT}/healthz\" >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    # Docker itself never restarts an *unhealthy* container (restart: only reacts
+    # to the process exiting). This label lets the optional autoheal service
+    # below restart it automatically.
+    labels:
+      autoheal: "true"
 
     # --- Without host networking (e.g. Docker Desktop), use this instead: ---
     # network_mode: bridge
     # ports:
     #   - "8765:8765"
     # Discovery will not work in bridge mode; enter the printer IP manually.
+
+  # Optional: restart tepra-web when its health check fails. Needs the Docker socket.
+  # autoheal:
+  #   image: willfarrell/autoheal:latest
+  #   container_name: autoheal
+  #   restart: unless-stopped
+  #   environment:
+  #     AUTOHEAL_CONTAINER_LABEL: autoheal
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   tepra-data:
