@@ -3,7 +3,6 @@
 services:
   tepra-web:
     build: .
-    image: tepra-web:latest
     container_name: tepra-web
     restart: unless-stopped
     # Host networking lets "Find on network" broadcast to the printer and avoids
