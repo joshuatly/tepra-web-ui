@@ -7,6 +7,8 @@
 // 非対応ブラウザ (Safari / Firefox) では代表的な同梱フォントを列挙し、
 // 実際に入っているものだけを残す。
 
+import { t } from './i18n.js';
+
 /** 存在判定・カバー判定に使う文字。かな・漢字・ラテン・記号を混ぜている。 */
 const SAMPLE = 'あアa禁WM1@#';
 
@@ -83,7 +85,7 @@ export async function localFontPermission() {
  * @returns {Promise<string[]>}
  */
 export async function queryLocalFamilies() {
-  if (!hasLocalFontApi()) throw new Error('This browser does not support the Local Font Access API');
+  if (!hasLocalFontApi()) throw new Error(t('This browser does not support the Local Font Access API'));
   const faces = await window.queryLocalFonts();
   // 1 ファミリに複数のフェイス (Regular / Bold / …) があるのでまとめる
   const families = new Set();

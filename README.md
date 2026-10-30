@@ -13,6 +13,11 @@ Bluetooth support for the SR-R2500P, SR-MK1 and SR-R7900P.
 The browser renders the label, turns it into 1-bit raster rows and builds the printer command
 stream. The server opens the print session with the printer and streams the job to it.
 
+> **Scope:** this fork is mainly about getting **Wi-Fi / LAN printing** working on the SR5900P
+> family. The Bluetooth path comes unchanged from
+> [nikachu2012/tepra_web](https://github.com/nikachu2012/tepra_web), and I don't have a
+> Bluetooth TEPRA to test it with, so treat it as untested here. Reports and fixes are welcome.
+
 ## Features
 
 - Label editor: multi-line text, any installed font (Chrome/Edge), bold/italic, alignment,
@@ -27,6 +32,7 @@ stream. The server opens the print session with the printer and streams the job 
 - Saved printers (kept in a Docker volume), optional pre-configuration via environment variable
 - LAN discovery (UDP broadcast)
 - Works on phones: responsive layout with a sticky print bar
+- English and Japanese UI: follows the browser's language, with a switcher in the page footer
 - `POST /api/print/image`: print a PNG from scripts or home automation, no browser needed
 - Bluetooth Classic (RFCOMM) for SR-R2500P / SR-MK1 / SR-R7900P when you run the server
   natively (not in Docker)
@@ -34,11 +40,8 @@ stream. The server opens the print session with the printer and streams the job 
 ## Run it in Portainer
 
 1. **Stacks → Add stack**
-2. Either
-   - **Repository**: point it at this Git repository, compose path `docker-compose.yml`
-     (Portainer builds the image), or
-   - **Web editor**: paste `docker-compose.yml`. If CI has published the image, replace
-     `build: .` with `image: ghcr.io/joshuatly/tepra-web-ui:latest`.
+2. **Repository**: point it at this Git repository, compose path `docker-compose.yml`
+   (Portainer builds the image). No prebuilt image is published.
 3. Optionally set `TEPRA_PRINTERS` (see below) so the printer is already there on first load.
 4. Deploy, then open `http://<docker-host>:8765/`.
 

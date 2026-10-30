@@ -6,6 +6,8 @@
 //   - 保存した JSON を別の機種の環境へ持って行ける
 // ラスタを持ち回らないぶんファイルも小さい。
 
+import { t } from './i18n.js';
+
 export const JOB_FORMAT = 'tepra-web/job@1';
 
 /** 保存ファイルに埋め込む画像の上限 (data URL の文字数) */
@@ -69,7 +71,7 @@ export function itemLabel(item) {
   if (item.name) return item.name;
   const firstLine = item.design.text.split('\n').find((l) => l.trim());
   if (firstLine) return firstLine.trim().slice(0, 24);
-  return item.design.imageDataUrl ? '(image only)' : '(empty label)';
+  return item.design.imageDataUrl ? t('(image only)') : t('(empty label)');
 }
 
 let counter = 0;
@@ -132,15 +134,15 @@ export function parseJob(text) {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error('Not valid JSON');
+    throw new Error(t('Not valid JSON'));
   }
-  if (!data || typeof data !== 'object') throw new Error('Top level is not an object');
+  if (!data || typeof data !== 'object') throw new Error(t('Top level is not an object'));
   if (data.format !== JOB_FORMAT) {
-    throw new Error(`Unsupported format (${str(data.format, 40) || 'unknown'})`);
+    throw new Error(t('Unsupported format ({format})', { format: str(data.format, 40) || t('unknown') }));
   }
-  if (!Array.isArray(data.items)) throw new Error('Missing items');
-  if (!data.items.length) throw new Error('The job has no items');
-  if (data.items.length > 500) throw new Error('Too many items (max 500)');
+  if (!Array.isArray(data.items)) throw new Error(t('Missing items'));
+  if (!data.items.length) throw new Error(t('The job has no items'));
+  if (data.items.length > 500) throw new Error(t('Too many items (max 500)'));
 
   const print = data.print && typeof data.print === 'object' ? data.print : {};
   return {

@@ -6,6 +6,9 @@ import {
   rasterBlock,
 } from './protocol.js';
 import { DEVICE_ERROR, PRINTER_STATUS } from './models.js';
+import { t } from './i18n.js';
+
+const stateName = (st) => (PRINTER_STATUS[st] ? t(PRINTER_STATUS[st]) : st);
 
 /** PrintController.PRINT_CONTROLLER_BANDING_SIZE */
 export const BANDING_SIZE = 1024;
@@ -30,14 +33,14 @@ export class PrintJob {
   cancel() { this.cancelRequested = true; }
 
   _checkCancel() {
-    if (this.cancelRequested) throw new PrintAborted('Cancelled');
+    if (this.cancelRequested) throw new PrintAborted(t('Cancelled'));
   }
 
   _checkStatus(status) {
     if (!status) return;
     if (status.ER !== 0) {
-      const name = DEVICE_ERROR[status.ER] || `error code ${status.ER}`;
-      throw new Error(`Printer error: ${name}`);
+      const name = DEVICE_ERROR[status.ER] ? t(DEVICE_ERROR[status.ER]) : t('error code {code}', { code: status.ER });
+      throw new Error(t('Printer error: {error}', { error: name }));
     }
   }
 
@@ -60,7 +63,7 @@ export class PrintJob {
     const totalRows = pages.reduce((n, p) => n + p.rows.length, 0) * opts.copies;
     let doneRows = 0;
 
-    ble.log('Resetting printer');
+    ble.log(t('Resetting printer'));
     await ble.send(cmdReset());
     await sleep(200);
 
@@ -70,12 +73,12 @@ export class PrintJob {
     try {
       first = await ble.waitStatus(15000);
     } catch (err) {
-      throw /timed out/.test(err.message) ? new Error(NO_RESPONSE_HINT) : err;
+      throw err.timedOut ? new Error(t(NO_RESPONSE_HINT)) : err;
     }
-    ble.log(`State: ${PRINTER_STATUS[first.ST] ?? first.ST}`);
+    ble.log(t('State: {state}', { state: stateName(first.ST) }));
     this._checkStatus(first);
 
-    onProgress({ phase: 'Sending job settings', done: 0, total: totalRows });
+    onProgress({ phase: t('Sending job settings'), done: 0, total: totalRows });
     await ble.send(jobEnvironmentCommand(opts));
     await ble.send(cmdRequestStatusAuto());
     this._checkStatus(await ble.waitStatus(15000));
@@ -92,7 +95,9 @@ export class PrintJob {
           await ble.send(rasterBlock(band, page.widthDots));
           doneRows += band.length;
           onProgress({
-            phase: `Printing (set ${copy + 1}/${opts.copies}, page ${pi + 1}/${pages.length})`,
+            phase: t('Printing (set {copy}/{copies}, page {page}/{pages})', {
+              copy: copy + 1, copies: opts.copies, page: pi + 1, pages: pages.length,
+            }),
             done: doneRows,
             total: totalRows,
           });
@@ -101,7 +106,7 @@ export class PrintJob {
             this._checkStatus(await ble.waitStatus(60000));
           } catch (e) {
             if (e instanceof PrintAborted) throw e;
-            if (!/timed out/.test(e.message)) throw e;
+            if (!e.timedOut) throw e;
           }
         }
 
@@ -109,14 +114,14 @@ export class PrintJob {
       }
     }
 
-    onProgress({ phase: 'Finishing', done: totalRows, total: totalRows });
+    onProgress({ phase: t('Finishing'), done: totalRows, total: totalRows });
     await ble.send(cmdPrintEnd());
     try {
       const last = await ble.waitStatus(60000);
       this._checkStatus(last);
-      ble.log(`Done. State: ${PRINTER_STATUS[last.ST] ?? last.ST}`, 'ok');
+      ble.log(t('Done. State: {state}', { state: stateName(last.ST) }), 'ok');
     } catch (e) {
-      ble.log(`Did not receive the final status (${e.message})`, 'warn');
+      ble.log(t('Did not receive the final status ({error})', { error: e.message }), 'warn');
     }
   }
 }
@@ -135,7 +140,7 @@ export async function endSession(ble, waitMs = 2000) {
     await ble.send(cmdRequestStatusOnce());
     await ble.waitStatus(waitMs).catch(() => {});
   } catch (err) {
-    ble.log(`Cleanup failed: ${err.message}`, 'warn');
+    ble.log(t('Cleanup failed: {error}', { error: err.message }), 'warn');
   }
 }
 
@@ -163,7 +168,7 @@ export async function fetchStatus(ble) {
   try {
     return await ble.waitStatus(10000);
   } catch (err) {
-    if (/timed out/.test(err.message)) throw new Error(NO_RESPONSE_HINT);
+    if (err.timedOut) throw new Error(t(NO_RESPONSE_HINT));
     throw err;
   }
 }
