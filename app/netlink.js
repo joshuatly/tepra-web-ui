@@ -4,6 +4,8 @@
 // session per job (UDP lock, TCP data, UDP status polling, unlock). "Connecting"
 // in the UI just means the printer answered a status request.
 
+import { t } from './i18n.js';
+
 export class NetworkLink extends EventTarget {
   constructor() {
     super();
@@ -31,21 +33,21 @@ export class NetworkLink extends EventTarget {
       body: JSON.stringify(printer),
     });
     const body = await res.json();
-    if (!res.ok) throw new Error(body.error || 'Could not save the printer');
+    if (!res.ok) throw new Error(body.error || t('Could not save the printer'));
     return body;
   }
 
   static async removePrinter(id) {
     const res = await fetch(`/api/printers?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
     const body = await res.json();
-    if (!res.ok) throw new Error(body.error || 'Could not remove the printer');
+    if (!res.ok) throw new Error(body.error || t('Could not remove the printer'));
     return body.printers;
   }
 
   static async discover() {
     const res = await fetch('/api/net/discover');
     const body = await res.json();
-    if (!res.ok) throw new Error(body.error || 'Discovery failed');
+    if (!res.ok) throw new Error(body.error || t('Discovery failed'));
     return body.printers;
   }
 
@@ -103,8 +105,8 @@ export class NetworkLink extends EventTarget {
     const res = await fetch(`/api/net/status?${this._query()}`);
     const body = await res.json();
     if (!res.ok) {
-      throw new Error(`${body.error || 'No response'}. Check the printer's IP address, that it is on `
-        + 'and on the same network.');
+      throw new Error(t("{error}. Check the printer's IP address, that it is on and on the same network.",
+        { error: body.error || t('No response') }));
     }
     this._setStatus(body.status);
     return body.status;
@@ -123,11 +125,11 @@ export class NetworkLink extends EventTarget {
     });
     const body = await res.json().catch(() => ({}));
     if (res.status === 499) {
-      const err = new Error('Cancelled');
+      const err = new Error(t('Cancelled'));
       err.name = 'PrintAborted';
       throw err;
     }
-    if (!res.ok) throw new Error(body.error || `Print failed (${res.status})`);
+    if (!res.ok) throw new Error(body.error || t('Print failed ({status})', { status: res.status }));
   }
 
   async cancel() {

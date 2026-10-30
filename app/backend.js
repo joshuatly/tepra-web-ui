@@ -2,6 +2,8 @@
 // 経路は Bluetooth Classic (RFCOMM) 直結のみ。
 // PrintJob が使う connect / disconnect / send / waitStatus を提供する。
 
+import { t } from './i18n.js';
+
 export class BackendLink extends EventTarget {
   constructor() {
     super();
@@ -21,7 +23,7 @@ export class BackendLink extends EventTarget {
   /** バックエンドが動いているか / Bluetooth が使えるか */
   static async probe() {
     const res = await fetch('/api/state');
-    if (!res.ok) throw new Error(`Backend is not responding (${res.status})`);
+    if (!res.ok) throw new Error(t('Backend is not responding ({status})', { status: res.status }));
     return res.json();
   }
 
@@ -29,7 +31,7 @@ export class BackendLink extends EventTarget {
   static async listDevices() {
     const res = await fetch('/api/devices');
     const body = await res.json();
-    if (!res.ok) throw new Error(body.error || 'Could not list devices');
+    if (!res.ok) throw new Error(body.error || t('Could not list devices'));
     return body.devices;
   }
 
@@ -48,7 +50,7 @@ export class BackendLink extends EventTarget {
     };
     es.onerror = () => {
       // EventSource は自動再接続する。切れている間はログだけ出す。
-      this.log('Lost the event stream from the backend (reconnecting)', 'warn');
+      this.log(t('Lost the event stream from the backend (reconnecting)'), 'warn');
     };
   }
 
@@ -101,7 +103,7 @@ export class BackendLink extends EventTarget {
       }),
     });
     const body = await res.json();
-    if (!res.ok) throw new Error(body.error || 'Connection failed');
+    if (!res.ok) throw new Error(body.error || t('Connection failed'));
     this.device = body.device;
     return this.device;
   }
@@ -118,7 +120,7 @@ export class BackendLink extends EventTarget {
       body: bytes,
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `Send failed (${res.status})`);
+    if (!res.ok) throw new Error(body.error || t('Send failed ({status})', { status: res.status }));
     this.totalWritten += body.written || bytes.length;
     this.dispatchEvent(new CustomEvent('progress', { detail: { written: this.totalWritten } }));
   }
@@ -131,7 +133,8 @@ export class BackendLink extends EventTarget {
         const i = this._statusWaiters.indexOf(waiter);
         if (i !== -1) {
           this._statusWaiters.splice(i, 1);
-          reject(new Error('Status response timed out'));
+          // job.js は timedOut を見て「応答なし」の案内に差し替える
+          reject(Object.assign(new Error(t('Status response timed out')), { timedOut: true }));
         }
       }, timeoutMs);
     });

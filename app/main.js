@@ -21,6 +21,9 @@ import {
 import { BackendLink } from './backend.js';
 import { NetworkLink } from './netlink.js';
 import { PrintJob, tapeFeed, fetchStatus, endSession } from './job.js';
+import {
+  t, applyI18n, setI18nText, initLanguageSelect, languageEvents, isTranslationOf,
+} from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -62,7 +65,7 @@ function getNetLink() {
     });
     netLink.addEventListener('progress', (e) => {
       const p = e.detail;
-      if (printing) setProgress(p.done, p.total, p.phase);
+      if (printing) setProgress(p.done, p.total, t(p.phase));
     });
   }
   return netLink;
@@ -83,8 +86,8 @@ function getLink() {
       if (expectDisconnect) return;
       // 自分から切ったわけではない = プリンタの電源断・スリープ・他端末の割り込みなど
       showReconnect(wasPrinting
-        ? 'Lost the connection while printing. Check the tape, then reconnect.'
-        : 'Lost the connection to the printer. Please reconnect.');
+        ? t('Lost the connection while printing. Check the tape, then reconnect.')
+        : t('Lost the connection to the printer. Please reconnect.'));
     });
   }
   return link;
@@ -126,7 +129,7 @@ async function connectTo(target) {
 /** Wi-Fi / LAN: "connected" means the printer answered a status request. */
 async function connectNetwork(printer) {
   const target = getNetLink();
-  $('conn-state').textContent = 'Connecting…';
+  $('conn-state').textContent = t('Connecting…');
   $('btn-connect').disabled = true;
   let device;
   try {
@@ -138,14 +141,14 @@ async function connectNetwork(printer) {
   lastTarget = { kind: 'network', ...device };
   hideReconnect();
   setConnected(true, `${device.name || device.host} · Wi-Fi`);
-  log(`Connected to ${device.name || device.host} (${device.host}:${device.port})`, 'ok');
+  log(t('Connected to {name} ({host}:{port})', { name: device.name || device.host, host: device.host, port: device.port }), 'ok');
   startStatusPolling();
   return device;
 }
 
 async function connectBluetooth({ id, model, channel }) {
   const target = getLink();
-  $('conn-state').textContent = 'Connecting…';
+  $('conn-state').textContent = t('Connecting…');
   $('btn-connect').disabled = true;
   // バックエンドは繋ぎ直す前に古い接続を切るので、その通知で帯を出さない
   expectDisconnect = true;
@@ -163,32 +166,46 @@ async function connectBluetooth({ id, model, channel }) {
   try {
     showStatus(await fetchStatus(active));
   } catch (err) {
-    log(`Could not read status: ${err.message}`, 'warn');
+    log(t('Could not read status: {error}', { error: err.message }), 'warn');
   }
   return device;
 }
 
 // ---- 初期化 -------------------------------------------------------------
 
-function initSelects() {
+function renderPrinterOptions() {
   // statusLength 22 の 3 機種 (SR-R5600P/C/GS) は BLE 専用で、
   // Bluetooth Classic のプロファイルを持たないため RFCOMM では繋がらない。
+  const prev = $('printer').value;
   $('printer').innerHTML = PRINTERS
     .map((p) => {
       const bleOnly = p.statusLength === 22;
       return `<option value="${p.model}"${bleOnly ? ' data-bleonly="1"' : ''}>`
-        + `${p.model}${bleOnly ? ' (BLE only, not supported)' : ''}</option>`;
+        + `${p.model}${bleOnly ? t(' (BLE only, not supported)') : ''}</option>`;
     })
     .join('');
+  if (prev) $('printer').value = prev;
+}
+
+function initSelects() {
+  renderPrinterOptions();
   $('printer').value = PRINTERS.some((p) => p.model === prefs.get('model'))
     ? prefs.get('model')
     : 'TEPRA PRO SR5900P';
   refreshTapeOptions();
 }
 
+/** テープ幅の表示名 (models.js の英語名を訳す) */
+function tapeLabel(code) {
+  if (code > 0 && !TAPE_WIDTHS.some((w) => w.code === code)) return t('code {code}', { code });
+  return t(tapeWidthLabel(code));
+}
+
 // ---- フォント -----------------------------------------------------------
 
 const FONT_STORAGE_KEY = 'font';
+/** Text used to wait for a font to load: Latin and kana, so either subset gets fetched */
+const FONT_SAMPLE = 'Aあ';
 
 /** いま選べるファミリ名 */
 let fontFamilies = [];
@@ -236,13 +253,13 @@ function renderFontOptions(select) {
   if (list.includes(chosen)) $('font').value = chosen;
 
   const total = fontFamilies.length;
-  $('font-count').textContent = filter ? `${shown.length} / ${total}` : `${total}`;
+  $('font-count').textContent = filter ? t('{shown} / {total}', { shown: shown.length, total }) : t('{total}', { total });
 }
 
 async function useFont(family) {
   prefs.set(FONT_STORAGE_KEY, family);
   // canvas は未読み込みのフォントを黙って代替に差し替えるので、待ってから描く
-  await ensureFontLoaded(`16px ${cssFamily(family)}`, $('text').value || 'A');
+  await ensureFontLoaded(`16px ${cssFamily(family)}`, $('text').value || FONT_SAMPLE);
   refresh();
 }
 
@@ -250,16 +267,16 @@ async function useFont(family) {
 async function loadLocalFonts({ silent = false } = {}) {
   try {
     const families = await queryLocalFamilies();
-    if (!families.length) throw new Error('No fonts returned');
+    if (!families.length) throw new Error(t('No fonts returned'));
     setFontFamilies(families);
     await useFont($('font').value);
-    log(`Loaded ${families.length} installed fonts`, 'ok');
+    log(t('Loaded {n} installed fonts', { n: families.length }), 'ok');
     $('btn-load-fonts').disabled = true;
-    $('btn-load-fonts').textContent = 'Loaded';
+    setI18nText($('btn-load-fonts'), 'Loaded');
   } catch (err) {
     if (silent) return;
     // 許可を拒否された場合もここに来る
-    log(`Could not list fonts: ${err.message}`, 'warn');
+    log(t('Could not list fonts: {error}', { error: err.message }), 'warn');
   }
 }
 
@@ -268,9 +285,9 @@ async function initFonts() {
 
   if (!hasLocalFontApi()) {
     $('btn-load-fonts').disabled = true;
-    $('btn-load-fonts').textContent = 'Not supported in this browser';
-    log('Listing installed fonts needs Chrome or Edge (and HTTPS or localhost). '
-      + 'Only common fonts are offered.', 'warn');
+    setI18nText($('btn-load-fonts'), 'Not supported in this browser');
+    log(t('Listing installed fonts needs Chrome or Edge (and HTTPS or localhost). '
+      + 'Only common fonts are offered.'), 'warn');
   } else if (await localFontPermission() === 'granted') {
     // 一度許可していればダイアログ無しで取れる (取れなければボタンを残す)
     await loadLocalFonts({ silent: true });
@@ -283,10 +300,10 @@ function refreshTapeOptions() {
   const printer = findPrinter($('printer').value);
   const prev = $('tape').value;
   const opts = TAPE_WIDTHS
-    .filter((t) => printer.tapeKinds.includes(t.code))
-    .map((t) => {
-      const dots = printableDots(t.code, printer.resolution, printer.modelNumber);
-      return `<option value="${t.code}">${t.label} — ${dots} dot</option>`;
+    .filter((w) => printer.tapeKinds.includes(w.code))
+    .map((w) => {
+      const dots = printableDots(w.code, printer.resolution, printer.modelNumber);
+      return `<option value="${w.code}">${t(w.label)} — ${dots} dot</option>`;
     });
   $('tape').innerHTML = opts.join('');
   if (prev && [...$('tape').options].some((o) => o.value === prev)) $('tape').value = prev;
@@ -345,7 +362,7 @@ async function renderJobList() {
     meta.className = 'job-meta';
     meta.textContent = page
       ? `${page.page.lengthDots} dot / ${dotsToMm(page.page.lengthDots, dpi).toFixed(1)} mm`
-      : 'Cannot print on this tape width';
+      : t('Cannot print on this tape width');
     body.append(name, meta);
 
     // 枚数はその場で変えられるようにする
@@ -355,7 +372,7 @@ async function renderJobList() {
     copies.min = '1';
     copies.max = '99';
     copies.value = String(item.copies);
-    copies.title = 'Copies';
+    copies.title = t('Copies');
     copies.addEventListener('click', (e) => e.stopPropagation());
     copies.addEventListener('change', () => {
       item.copies = Math.max(1, Math.min(99, Number(copies.value) || 1));
@@ -366,9 +383,9 @@ async function renderJobList() {
     const buttons = document.createElement('div');
     buttons.className = 'job-buttons';
     buttons.append(
-      jobButton('↑', 'Move up', index === 0, () => moveItem(index, -1)),
-      jobButton('↓', 'Move down', index === jobItems.length - 1, () => moveItem(index, 1)),
-      jobButton('✕', 'Remove', false, () => removeItem(item.id)),
+      jobButton('↑', t('Move up'), index === 0, () => moveItem(index, -1)),
+      jobButton('↓', t('Move down'), index === jobItems.length - 1, () => moveItem(index, 1)),
+      jobButton('✕', t('Remove'), false, () => removeItem(item.id)),
     );
 
     li.append(idx, thumb, body, copies, buttons);
@@ -415,14 +432,14 @@ function updateJobSummary(built = null) {
   const sets = Math.max(1, Number($('job-sets').value) || 1);
   const labels = jobItems.reduce((n, it) => n + it.copies, 0) * sets;
 
-  let text = has ? `${jobItems.length} item(s) / ${labels} label(s)` : '(empty)';
+  let text = has ? t('{items} item(s) / {labels} label(s)', { items: jobItems.length, labels }) : t('(empty)');
   if (has && lastJobBuild.length === jobItems.length) {
     const dpi = currentPrinter().resolution;
     const mm = lastJobBuild.reduce((sum, b, i) => sum
       + (b ? dotsToMm(b.page.lengthDots, dpi) * jobItems[i].copies : 0), 0);
     const bytes = lastJobBuild.reduce((sum, b, i) => sum
       + (b ? b.page.rows.length * (8 + ((b.page.widthDots + 7) >> 3)) * jobItems[i].copies : 0), 0);
-    text += ` / ~${(mm * sets).toFixed(0)} mm / raster ${(bytes * sets).toLocaleString()} B`;
+    text += t(' / ~{mm} mm / raster {bytes} B', { mm: (mm * sets).toFixed(0), bytes: (bytes * sets).toLocaleString() });
   }
   $('job-summary').textContent = text;
 
@@ -508,10 +525,10 @@ async function applyDesignToUI(design) {
 
   labelImageUrl = design.imageDataUrl;
   labelImage = design.imageDataUrl ? await loadImage(design.imageDataUrl).catch(() => null) : null;
-  if (design.imageDataUrl && !labelImage) log('Could not load the image stored in the batch item', 'warn');
+  if (design.imageDataUrl && !labelImage) log(t('Could not load the image stored in the batch item'), 'warn');
   $('image').value = '';
 
-  await ensureFontLoaded(`16px ${cssFamily(design.fontFamily)}`, design.text || 'A');
+  await ensureFontLoaded(`16px ${cssFamily(design.fontFamily)}`, design.text || FONT_SAMPLE);
 }
 
 /** data URL / object URL から HTMLImageElement を作る */
@@ -519,7 +536,7 @@ function loadImage(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Cannot read the image'));
+    img.onerror = () => reject(new Error(t('Cannot read the image')));
     img.src = url;
   });
 }
@@ -609,7 +626,7 @@ function refresh() {
   const built = buildPage();
   lastRender = built;
   if (!built) {
-    $('size-info').textContent = 'Cannot print on this tape width';
+    $('size-info').textContent = t('Cannot print on this tape width');
     return;
   }
   const { spec, canvas, binarized, page } = built;
@@ -621,8 +638,9 @@ function refresh() {
 
   const lenMm = dotsToMm(page.lengthDots, spec.dpi).toFixed(1);
   const bytes = page.rows.length * (8 + ((page.widthDots + 7) >> 3));
-  $('size-info').textContent =
-    `${page.lengthDots} × ${page.widthDots} dot / ${lenMm} mm / ${spec.dpi} dpi / ${bytes.toLocaleString()} B`;
+  $('size-info').textContent = t('{length} × {width} dot / {mm} mm / {dpi} dpi / {bytes} B', {
+    length: page.lengthDots, width: page.widthDots, mm: lenMm, dpi: spec.dpi, bytes: bytes.toLocaleString(),
+  });
 }
 
 // ---- ログ / 状態表示 -----------------------------------------------------
@@ -637,24 +655,34 @@ function log(message, kind = 'info') {
   el.scrollTop = el.scrollHeight;
 }
 
+/** Last status shown, so the table can be redrawn in another language */
+let shownStatus = null;
+
 function showStatus(s) {
-  $('st-state').textContent = `${PRINTER_STATUS[s.ST] ?? 'Unknown'} (0x${s.ST.toString(16)})`;
-  const err = DEVICE_ERROR[s.ER] ?? `Unknown (${s.ER})`;
-  $('st-error').textContent = s.ER === 0 ? 'None' : err;
+  shownStatus = s;
+  $('st-state').textContent = `${t(PRINTER_STATUS[s.ST] ?? 'Unknown')} (0x${s.ST.toString(16)})`;
+  const err = DEVICE_ERROR[s.ER] ? t(DEVICE_ERROR[s.ER]) : t('Unknown ({code})', { code: s.ER });
+  $('st-error').textContent = s.ER === 0 ? t('None') : err;
   $('st-error').style.color = s.ER === 0 ? '' : 'var(--err)';
-  $('st-tape').textContent = `${tapeWidthLabel(s.tapeWidthCode)} (TW=0x${s.TW.toString(16).padStart(2, '0')}, type ${s.TR})`;
-  $('st-buffer').textContent = `${s.RB ? `buffer ${s.RB.toLocaleString()} B / ` : ''}printed ${s.PP} label(s)`;
+  $('st-tape').textContent = t('{tape} (TW=0x{tw}, type {type})', {
+    tape: tapeLabel(s.tapeWidthCode), tw: s.TW.toString(16).padStart(2, '0'), type: s.TR,
+  });
+  $('st-buffer').textContent = (s.RB ? t('buffer {bytes} B / ', { bytes: s.RB.toLocaleString() }) : '')
+    + t('printed {n} label(s)', { n: s.PP });
 }
 
 /** Whether the backend can use Bluetooth (set by initTransport) */
 let btAvailable = false;
+/** Label shown in the connection pill while connected (kept for language switches) */
+let connLabel = null;
 
 function setConnected(on, label) {
   if (!on) {
     active = null;
     stopStatusPolling();
   }
-  $('conn-state').textContent = on ? (label || 'Connected') : 'Not connected';
+  connLabel = on ? label : null;
+  $('conn-state').textContent = on ? (label || t('Connected')) : t('Not connected');
   $('conn-state').className = `pill ${on ? 'pill-on' : 'pill-off'}`;
   $('btn-connect').hidden = on;
   $('btn-disconnect').hidden = !on;
@@ -671,8 +699,8 @@ function setPrinting(on) {
   const bluetooth = ready && active.kind !== 'network';
   $('btn-print').disabled = on || !ready;
   $('btn-print-mobile').disabled = on || !ready;
-  $('btn-print-mobile').textContent = on ? 'Printing…' : 'Print';
-  $('mobile-info').textContent = ready ? $('conn-state').textContent : 'Connect a printer first';
+  $('btn-print-mobile').textContent = on ? t('Printing…') : t('Print');
+  $('mobile-info').textContent = ready ? $('conn-state').textContent : t('Connect a printer first');
   $('btn-cancel').disabled = !on;
   $('btn-status').disabled = on || !ready;
   // Tape feed over Wi-Fi has not been captured from the official software yet
@@ -688,14 +716,15 @@ let netPrinters = [];
 function renderNetPrinters(selectId = $('net-printer').value || prefs.get('net-printer')) {
   const select = $('net-printer');
   if (!netPrinters.length) {
-    select.innerHTML = '<option value="">(none saved yet)</option>';
+    select.innerHTML = `<option value="" data-i18n="(none saved yet)">${t('(none saved yet)')}</option>`;
   } else {
     select.replaceChildren(...netPrinters.map((p) => {
       const o = document.createElement('option');
       o.value = p.id;
-      o.textContent = `${p.name} — ${p.host}${p.port !== 9100 ? `:${p.port}` : ''}${p.fromEnv ? ' (config)' : ''}`;
+      o.textContent = `${p.name} — ${p.host}${p.port !== 9100 ? `:${p.port}` : ''}${p.fromEnv ? t(' (config)') : ''}`;
       return o;
-    }), Object.assign(document.createElement('option'), { value: '', textContent: 'Other…' }));
+    }), Object.assign(document.createElement('option'), { value: '' }));
+    setI18nText(select.lastElementChild, 'Other…');
     select.value = netPrinters.some((p) => p.id === selectId) ? selectId : netPrinters[0].id;
   }
   onNetPrinterSelected();
@@ -747,21 +776,21 @@ function networkTarget() {
 }
 
 async function saveNetPrinter({ quiet = false } = {}) {
-  const t = networkTarget();
-  if (!t) { log('Enter the printer\'s IP address first', 'warn'); return null; }
+  const target = networkTarget();
+  if (!target) { log(t("Enter the printer's IP address first"), 'warn'); return null; }
   try {
     const { printer, printers } = await NetworkLink.savePrinter({
-      name: $('net-name').value.trim() || t.name || t.host,
-      host: t.host,
-      port: t.port,
+      name: $('net-name').value.trim() || target.name || target.host,
+      host: target.host,
+      port: target.port,
       model: $('printer').value,
     });
     netPrinters = printers;
     renderNetPrinters(printer.id);
-    if (!quiet) log(`Saved printer ${printer.name} (${printer.host})`, 'ok');
+    if (!quiet) log(t('Saved printer {name} ({host})', { name: printer.name, host: printer.host }), 'ok');
     return printer;
   } catch (err) {
-    log(`Could not save the printer: ${err.message}`, 'err');
+    log(t('Could not save the printer: {error}', { error: err.message }), 'err');
     return null;
   }
 }
@@ -772,14 +801,14 @@ function matchLoadedTape(status) {
   const code = String(status.tapeWidthCode);
   if ($('tape').value === code) return;
   if (![...$('tape').options].some((o) => o.value === code)) {
-    log(`Loaded tape (${tapeWidthLabel(status.tapeWidthCode)}) is not supported by ${$('printer').value}`, 'warn');
+    log(t('Loaded tape ({tape}) is not supported by {model}', { tape: tapeLabel(status.tapeWidthCode), model: $('printer').value }), 'warn');
     return;
   }
   $('tape').value = code;
   invalidateJobPages();
   renderJobList();
   refresh();
-  log(`Tape width set to ${tapeWidthLabel(status.tapeWidthCode)} to match the printer`, 'ok');
+  log(t('Tape width set to {tape} to match the printer', { tape: tapeLabel(status.tapeWidthCode) }), 'ok');
 }
 
 let pollTimer = null;
@@ -792,7 +821,7 @@ function startStatusPolling() {
     try {
       await active.fetchStatus();
     } catch (err) {
-      log(`Status poll failed: ${err.message}`, 'warn');
+      log(t('Status poll failed: {error}', { error: err.message }), 'warn');
     }
   }, 15000);
 }
@@ -826,13 +855,13 @@ $('btn-net-save').addEventListener('click', () => saveNetPrinter());
 
 $('btn-net-remove').addEventListener('click', async () => {
   const p = selectedNetPrinter();
-  if (!p || !confirm(`Remove ${p.name} (${p.host})?`)) return;
+  if (!p || !confirm(t('Remove {name} ({host})?', { name: p.name, host: p.host }))) return;
   try {
     netPrinters = await NetworkLink.removePrinter(p.id);
     $('net-host').value = '';
     $('net-name').value = '';
     renderNetPrinters();
-    log(`Removed ${p.name}`);
+    log(t('Removed {name}', { name: p.name }));
   } catch (err) {
     log(err.message, 'err');
   }
@@ -842,14 +871,14 @@ $('btn-net-discover').addEventListener('click', async () => {
   const button = $('btn-net-discover');
   const list = $('net-found');
   button.disabled = true;
-  button.textContent = 'Searching…';
+  button.textContent = t('Searching…');
   try {
     const found = await NetworkLink.discover();
     list.hidden = false;
     if (!found.length) {
       const li = document.createElement('li');
-      li.textContent = 'No printers answered. Discovery needs the server on the same LAN '
-        + '(Docker: network_mode: host). You can still type the IP address.';
+      li.textContent = t('No printers answered. Discovery needs the server on the same LAN '
+        + '(Docker: network_mode: host). You can still type the IP address.');
       list.replaceChildren(li);
       return;
     }
@@ -858,7 +887,7 @@ $('btn-net-discover').addEventListener('click', async () => {
       const text = document.createElement('span');
       text.textContent = `${f.host} — ${f.summary}`;
       const use = document.createElement('button');
-      use.textContent = 'Use';
+      use.textContent = t('Use');
       use.addEventListener('click', async () => {
         $('net-printer').value = '';
         $('net-host').value = f.host;
@@ -869,12 +898,12 @@ $('btn-net-discover').addEventListener('click', async () => {
       li.append(text, use);
       return li;
     }));
-    log(`Found ${found.length} printer(s) on the network`, 'ok');
+    log(t('Found {n} printer(s) on the network', { n: found.length }), 'ok');
   } catch (err) {
-    log(`Discovery failed: ${err.message}`, 'err');
+    log(t('Discovery failed: {error}', { error: err.message }), 'err');
   } finally {
     button.disabled = !!active;
-    button.textContent = 'Find on network';
+    button.textContent = t('Find on network');
   }
 });
 
@@ -888,25 +917,31 @@ function setProgress(done, total, phase) {
 
 $('btn-scan').addEventListener('click', async () => {
   const select = $('device');
-  select.innerHTML = '<option value="">(scanning…)</option>';
+  setDevicePlaceholder('(scanning…)');
   try {
     const devices = await BackendLink.listDevices();
     if (!devices.length) {
-      select.innerHTML = '<option value="">(none found)</option>';
-      log('No paired Bluetooth devices found. '
-        + 'Pair the printer in the OS settings first.', 'warn');
+      setDevicePlaceholder('(none found)');
+      log(t('No paired Bluetooth devices found. '
+        + 'Pair the printer in the OS settings first.'), 'warn');
       return;
     }
     select.innerHTML = devices
       .map((d) => `<option value="${d.id}">${d.likely ? '★ ' : ''}${d.name}${d.detail ? ` — ${d.detail}` : ''}</option>`)
       .join('');
-    log(`Found ${devices.length} device(s)`, 'ok');
+    log(t('Found {n} device(s)', { n: devices.length }), 'ok');
     autoSelectModelFromDevice();
   } catch (err) {
-    select.innerHTML = '<option value="">(scan failed)</option>';
-    log(`Device scan failed: ${err.message}`, 'err');
+    setDevicePlaceholder('(scan failed)');
+    log(t('Device scan failed: {error}', { error: err.message }), 'err');
   }
 });
+
+function setDevicePlaceholder(key) {
+  const option = Object.assign(document.createElement('option'), { value: '' });
+  setI18nText(option, key);
+  $('device').replaceChildren(option);
+}
 
 /** デバイス名に機種名が含まれていれば機種セレクタを合わせる */
 function autoSelectModelFromDevice() {
@@ -916,7 +951,7 @@ function autoSelectModelFromDevice() {
   $('printer').value = guess.model;
   refreshTapeOptions();
   refresh();
-  log(`Detected model ${guess.model} (${guess.resolution} dpi)`, 'ok');
+  log(t('Detected model {model} ({dpi} dpi)', { model: guess.model, dpi: guess.resolution }), 'ok');
 }
 
 $('device').addEventListener('change', autoSelectModelFromDevice);
@@ -925,10 +960,10 @@ $('btn-connect').addEventListener('click', async () => {
   let target;
   if (connKind() === 'network') {
     target = networkTarget();
-    if (!target) { log('Pick a saved printer or type its IP address first', 'warn'); return; }
+    if (!target) { log(t('Pick a saved printer or type its IP address first'), 'warn'); return; }
   } else {
     const id = $('device').value;
-    if (!id) { log('Scan for paired devices and pick the printer first', 'warn'); return; }
+    if (!id) { log(t('Scan for paired devices and pick the printer first'), 'warn'); return; }
     target = { kind: 'bluetooth', id, model: $('printer').value, channel: Number($('channel').value) || null };
   }
   try {
@@ -937,8 +972,8 @@ $('btn-connect').addEventListener('click', async () => {
     if (target.unsaved) await saveNetPrinter({ quiet: true });
   } catch (err) {
     setConnected(false);
-    log(`Connection failed: ${err.message}`, 'err');
-    showReconnect(`Connection failed: ${err.message}`);
+    log(t('Connection failed: {error}', { error: err.message }), 'err');
+    showReconnect(t('Connection failed: {error}', { error: err.message }));
   }
 });
 
@@ -946,17 +981,17 @@ $('btn-reconnect').addEventListener('click', async () => {
   if (!lastTarget) return;
   const button = $('btn-reconnect');
   button.disabled = true;
-  button.textContent = 'Reconnecting…';
+  button.textContent = t('Reconnecting…');
   try {
     await connectTo(lastTarget);
-    log('Reconnected', 'ok');
+    log(t('Reconnected'), 'ok');
   } catch (err) {
     setConnected(false);
-    log(`Reconnect failed: ${err.message}`, 'err');
-    showReconnect(`Reconnect failed: ${err.message}. Check the printer is on and try again.`);
+    log(t('Reconnect failed: {error}', { error: err.message }), 'err');
+    showReconnect(t('Reconnect failed: {error}. Check the printer is on and try again.', { error: err.message }));
   } finally {
     button.disabled = false;
-    button.textContent = 'Reconnect';
+    button.textContent = t('Reconnect');
   }
 });
 
@@ -982,15 +1017,15 @@ $('btn-status').addEventListener('click', async () => {
     // NetworkLink.fetchStatus() reports through its 'status' event
     if (active.kind === 'network') await active.fetchStatus();
     else showStatus(await fetchStatus(active));
-    log('Status updated', 'ok');
+    log(t('Status updated'), 'ok');
   } catch (err) {
-    log(`Could not read status: ${err.message}`, 'err');
+    log(t('Could not read status: {error}', { error: err.message }), 'err');
     noteIfDisconnected(err);
   }
 });
 
-$('btn-feed').addEventListener('click', () => runSimple(() => tapeFeed(active, false), 'Tape feed'));
-$('btn-feed-cut').addEventListener('click', () => runSimple(() => tapeFeed(active, true), 'Feed + cut'));
+$('btn-feed').addEventListener('click', () => runSimple(() => tapeFeed(active, false), t('Tape feed')));
+$('btn-feed-cut').addEventListener('click', () => runSimple(() => tapeFeed(active, true), t('Feed + cut')));
 
 /**
  * 通信が原因で失敗したなら再接続を促す。
@@ -998,17 +1033,17 @@ $('btn-feed-cut').addEventListener('click', () => runSimple(() => tapeFeed(activ
  */
 function noteIfDisconnected(err) {
   if (active?.connected) return;
-  showReconnect(`Lost communication with the printer (${err.message}). Please reconnect.`);
+  showReconnect(t('Lost communication with the printer ({error}). Please reconnect.', { error: err.message }));
 }
 
 async function runSimple(fn, name) {
   setPrinting(true);
   try {
-    log(`${name}…`);
+    log(t('{name}…', { name }));
     await fn();
-    log(`${name} done`, 'ok');
+    log(t('{name} done', { name }), 'ok');
   } catch (err) {
-    log(`${name} failed: ${err.message}`, 'err');
+    log(t('{name} failed: {error}', { name, error: err.message }), 'err');
     noteIfDisconnected(err);
   } finally {
     setPrinting(false);
@@ -1019,13 +1054,13 @@ async function runSimple(fn, name) {
 function printableModel() {
   const printer = currentPrinter();
   if (active?.kind === 'network' && printer.statusLength !== 20) {
-    log(`Wi-Fi printing supports the SR5900P / SR5900C / SR5900GS. Pick one of those under Model `
-      + `(currently ${printer.model}).`, 'err');
+    log(t('Wi-Fi printing supports the SR5900P / SR5900C / SR5900GS. Pick one of those under Model '
+      + '(currently {model}).', { model: printer.model }), 'err');
     return false;
   }
   if (SUPPORTED_COMMAND_LEVELS.includes(printer.commandLevel)) return true;
-  log(`${printer.model} uses command level ${printer.commandLevel}, `
-    + 'whose page commands are not decoded yet, so it cannot print.', 'err');
+  log(t('{model} uses command level {level}, whose page commands are not decoded yet, so it cannot print.',
+    { model: printer.model, level: printer.commandLevel }), 'err');
   return false;
 }
 
@@ -1034,7 +1069,7 @@ async function runNetworkPrint(pages, opts) {
   const link = active;
   currentJob = { cancel: () => link.cancel() };
   const bytes = buildNetworkJobBytes(pages, opts);
-  setProgress(0, bytes.length, 'Sending to printer');
+  setProgress(0, bytes.length, t('Sending to printer'));
   await link.print(bytes, { pages: pages.length * opts.copies, tapeCode: Number($('tape').value) });
   link.fetchStatus().catch(() => {});
 }
@@ -1049,12 +1084,12 @@ async function runPrint(pages, opts, what) {
       currentJob = new PrintJob(active);
       await currentJob.run(pages, opts, (p) => setProgress(p.done, p.total, p.phase));
     }
-    log(`${what} printed`, 'ok');
+    log(t('{what} printed', { what }), 'ok');
   } catch (err) {
     if (err.name === 'PrintAborted') {
-      log('Print cancelled', 'warn');
+      log(t('Print cancelled'), 'warn');
     } else {
-      log(`Print failed: ${err.message}`, 'err');
+      log(t('Print failed: {error}', { error: err.message }), 'err');
       noteIfDisconnected(err);
     }
   } finally {
@@ -1068,17 +1103,17 @@ async function runPrint(pages, opts, what) {
 $('btn-print').addEventListener('click', async () => {
   // フォントが未読み込みのまま描くと canvas が黙って代替フォントに差し替える。
   // 印字は取り返しがつかないので、ここで必ず読み込みを待ってから版下を作り直す。
-  await ensureFontLoaded(`16px ${cssFamily($('font').value)}`, $('text').value || 'A');
+  await ensureFontLoaded(`16px ${cssFamily($('font').value)}`, $('text').value || FONT_SAMPLE);
   const built = buildPage();
   lastRender = built;
-  if (!built) { log('Nothing printable for this tape width', 'err'); return; }
+  if (!built) { log(t('Nothing printable for this tape width'), 'err'); return; }
   if (!printableModel()) return;
 
-  await runPrint([built.page], printOptions(), 'Label');
+  await runPrint([built.page], printOptions(), t('Label'));
 });
 
 $('btn-job-print').addEventListener('click', async () => {
-  if (!jobItems.length) { log('The batch is empty', 'warn'); return; }
+  if (!jobItems.length) { log(t('The batch is empty'), 'warn'); return; }
   if (!printableModel()) return;
 
   const sets = Math.max(1, Math.min(99, Number($('job-sets').value) || 1));
@@ -1086,7 +1121,7 @@ $('btn-job-print').addEventListener('click', async () => {
   const skipped = [];
   for (const item of jobItems) {
     // フォントは項目ごとに違う。描く前に必ず読み込みを待つ。
-    await ensureFontLoaded(`16px ${cssFamily(item.design.fontFamily)}`, item.design.text || 'A');
+    await ensureFontLoaded(`16px ${cssFamily(item.design.fontFamily)}`, item.design.text || FONT_SAMPLE);
     itemPageCache.delete(item.id);
     const built = await itemPage(item);
     if (!built) { skipped.push(itemLabel(item)); continue; }
@@ -1094,19 +1129,20 @@ $('btn-job-print').addEventListener('click', async () => {
   }
 
   if (skipped.length) {
-    log(`Skipping items that do not fit this tape width: ${skipped.join(', ')}`, 'warn');
+    log(t('Skipping items that do not fit this tape width: {items}', { items: skipped.join(', ') }), 'warn');
   }
-  if (!pages.length) { log('No printable items', 'err'); return; }
+  if (!pages.length) { log(t('No printable items'), 'err'); return; }
 
   await renderJobList();
-  log(`Printing batch (${jobItems.length} items / ${pages.length * sets} labels / ${sets} set(s))`);
-  await runPrint(pages, printOptions(sets), 'Batch');
+  log(t('Printing batch ({items} items / {labels} labels / {sets} set(s))',
+    { items: jobItems.length, labels: pages.length * sets, sets }));
+  await runPrint(pages, printOptions(sets), t('Batch'));
 });
 
 $('btn-print-mobile').addEventListener('click', () => $('btn-print').click());
 
 $('btn-cancel').addEventListener('click', () => {
-  if (currentJob) { currentJob.cancel(); log('Cancel requested', 'warn'); }
+  if (currentJob) { currentJob.cancel(); log(t('Cancel requested'), 'warn'); }
 });
 
 // ---- ジョブの操作 -------------------------------------------------------
@@ -1116,7 +1152,7 @@ $('btn-job-add').addEventListener('click', async () => {
   jobItems.push(item);
   selectedItemId = item.id;
   await renderJobList();
-  log(`Added to batch: ${itemLabel(item)}`, 'ok');
+  log(t('Added to batch: {name}', { name: itemLabel(item) }), 'ok');
 });
 
 $('btn-job-update').addEventListener('click', async () => {
@@ -1125,7 +1161,7 @@ $('btn-job-update').addEventListener('click', async () => {
   item.design = readDesignFromUI();
   itemPageCache.delete(item.id);
   await renderJobList();
-  log(`Overwrote selected item: ${itemLabel(item)}`, 'ok');
+  log(t('Overwrote selected item: {name}', { name: itemLabel(item) }), 'ok');
 });
 
 $('btn-job-edit').addEventListener('click', async () => {
@@ -1134,17 +1170,17 @@ $('btn-job-edit').addEventListener('click', async () => {
   await applyDesignToUI(item.design);
   $('copies').value = String(item.copies);
   refresh();
-  log(`Loaded into editor: ${itemLabel(item)}`);
+  log(t('Loaded into editor: {name}', { name: itemLabel(item) }));
 });
 
 $('btn-job-clear').addEventListener('click', async () => {
   if (!jobItems.length) return;
-  if (!confirm(`Remove all ${jobItems.length} item(s) from the batch?`)) return;
+  if (!confirm(t('Remove all {n} item(s) from the batch?', { n: jobItems.length }))) return;
   jobItems = [];
   selectedItemId = null;
   invalidateJobPages();
   await renderJobList();
-  log('Batch cleared');
+  log(t('Batch cleared'));
 });
 
 $('job-sets').addEventListener('input', () => updateJobSummary());
@@ -1164,7 +1200,7 @@ $('btn-job-save').addEventListener('click', () => {
   a.download = `tepra-job-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
-  log(`Saved batch with ${jobItems.length} item(s)`, 'ok');
+  log(t('Saved batch with {n} item(s)', { n: jobItems.length }), 'ok');
 });
 
 $('btn-job-open').addEventListener('click', () => $('job-file').click());
@@ -1194,13 +1230,13 @@ $('job-file').addEventListener('change', async (e) => {
     invalidateJobPages();
     // 項目ごとにフォントが違うので、描く前にまとめて読み込んでおく
     for (const item of jobItems) {
-      await ensureFontLoaded(`16px ${cssFamily(item.design.fontFamily)}`, item.design.text || 'A');
+      await ensureFontLoaded(`16px ${cssFamily(item.design.fontFamily)}`, item.design.text || FONT_SAMPLE);
     }
     await renderJobList();
     refresh();
-    log(`Loaded batch with ${jobItems.length} item(s) (${file.name})`, 'ok');
+    log(t('Loaded batch with {n} item(s) ({file})', { n: jobItems.length, file: file.name }), 'ok');
   } catch (err) {
-    log(`Could not open batch: ${err.message}`, 'err');
+    log(t('Could not open batch: {error}', { error: err.message }), 'err');
   }
 });
 
@@ -1214,7 +1250,7 @@ $('btn-download').addEventListener('click', () => {
   a.download = 'tepra-job.bin';
   a.click();
   URL.revokeObjectURL(a.href);
-  log(`Saved ${bytes.length.toLocaleString()} command bytes`);
+  log(t('Saved {n} command bytes', { n: bytes.length.toLocaleString() }));
 });
 
 $('btn-hex').addEventListener('click', () => {
@@ -1222,8 +1258,8 @@ $('btn-hex').addEventListener('click', () => {
   if (!built) return;
   const bytes = buildJobBytes([built.page], printOptions());
   const head = bytes.subarray(0, 512);
-  $('hex-out').textContent =
-    `${bytes.length.toLocaleString()} bytes total (first ${head.length} shown)\n\n${toHex(head)}`;
+  $('hex-out').textContent = `${t('{total} bytes total (first {shown} shown)',
+    { total: bytes.length.toLocaleString(), shown: head.length })}\n\n${toHex(head)}`;
   $('hex-dialog').showModal();
 });
 
@@ -1235,18 +1271,18 @@ $('image').addEventListener('change', async (e) => {
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error('Cannot read the file'));
+      reader.onerror = () => reject(new Error(t('Cannot read the file')));
       reader.readAsDataURL(file);
     });
     labelImage = await loadImage(dataUrl);
     labelImageUrl = normalizeDesign({ imageDataUrl: dataUrl }).imageDataUrl;
     if (!labelImageUrl) {
-      log('This format cannot be saved in a batch (PNG / JPEG / GIF / WebP / BMP only). '
-        + 'It still works for the current label.', 'warn');
+      log(t('This format cannot be saved in a batch (PNG / JPEG / GIF / WebP / BMP only). '
+        + 'It still works for the current label.'), 'warn');
     }
     refresh();
   } catch (err) {
-    log(`Could not load image: ${err.message}`, 'err');
+    log(t('Could not load image: {error}', { error: err.message }), 'err');
   }
 });
 
@@ -1295,6 +1331,29 @@ for (const el of document.querySelectorAll('input[name=preview-mode]')) {
   el.addEventListener('change', refresh);
 }
 
+// ---- 言語 ---------------------------------------------------------------
+
+/** The sample label text in index.html; replaced by its translation while untouched */
+const DEFAULT_TEXT = 'TEPRA\nWeb';
+
+/** Redraws everything JS wrote, after applyI18n() has handled index.html. */
+function relocalize() {
+  if (isTranslationOf($('text').value, DEFAULT_TEXT)) $('text').value = t(DEFAULT_TEXT);
+  renderPrinterOptions();
+  refreshTapeOptions();
+  renderFontOptions();
+  refresh();
+  renderJobList();
+  setConnected(!!active?.connected, connLabel);
+  updateBackendState();
+  if (shownStatus) showStatus(shownStatus);
+}
+
+applyI18n();
+initLanguageSelect($('lang'));
+if (isTranslationOf($('text').value, DEFAULT_TEXT)) $('text').value = t(DEFAULT_TEXT);
+languageEvents.addEventListener('change', relocalize);
+
 // ---- 起動 ---------------------------------------------------------------
 
 initSelects();
@@ -1315,7 +1374,7 @@ async function initTransport() {
     btAvailable = false;
     updateBackendState();
     $('btn-connect').disabled = true;
-    log('Cannot reach the backend. Only preview and saving command bytes work.', 'warn');
+    log(t('Cannot reach the backend. Only preview and saving command bytes work.'), 'warn');
     return;
   }
 
@@ -1327,27 +1386,29 @@ async function initTransport() {
 
   if (connKind() === 'network') {
     log(netPrinters.length
-      ? 'Ready. Pick your printer and press Connect.'
-      : 'Ready. Type your printer\'s IP address (or use Find on network) and press Connect.');
+      ? t('Ready. Pick your printer and press Connect.')
+      : t("Ready. Type your printer's IP address (or use Find on network) and press Connect."));
   } else {
-    log('Ready. Turn the printer on, scan for paired devices and press Connect.');
+    log(t('Ready. Turn the printer on, scan for paired devices and press Connect.'));
   }
 }
 
 function updateBackendState() {
   const el = $('backend-state');
   if (!backendState) {
-    el.textContent = 'Backend not running (start it with npm start or Docker).';
+    el.textContent = t('Backend not running (start it with npm start or Docker).');
     return;
   }
   if (connKind() === 'network') {
-    el.textContent = `Server ${backendState.version || ''} — Wi-Fi printing over UDP/TCP 9100`;
+    el.textContent = t('Server {version} — Wi-Fi printing over UDP/TCP 9100', { version: backendState.version || '' });
     $('btn-connect').disabled = false;
   } else if (btAvailable) {
-    el.textContent = `Server ${backendState.version || ''} (${backendState.platform}) — Bluetooth available`;
+    el.textContent = t('Server {version} ({platform}) — Bluetooth available',
+      { version: backendState.version || '', platform: backendState.platform });
     $('btn-connect').disabled = false;
   } else {
-    el.textContent = `Bluetooth is not available on the server: ${backendState.rfcommError || 'unknown reason'}`;
+    el.textContent = t('Bluetooth is not available on the server: {reason}',
+      { reason: backendState.rfcommError || t('unknown reason') });
     $('btn-connect').disabled = true;
   }
 }
