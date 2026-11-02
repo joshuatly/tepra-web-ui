@@ -363,7 +363,8 @@ const ROUTES = {
    * Print a PNG without the browser, e.g.
    *   curl --data-binary @label.png -H 'Content-Type: image/png' \
    *        'http://tepra:8765/api/print/image?printer=192.168.1.50&copies=2'
-   * Query: printer|host, copies (1-99), cut (each|end|none), halfcut (0|1), density (-5..5),
+   * Query: printer|host, copies (1-99), cut (each|end|none), halfcut (0|1, between labels),
+   *        lead (half|cut: half-cut the leading blank into a peel tab, default half), density (-5..5),
    *        tape (code, default: loaded tape), fit (contain|fill), rotate (0|1), invert (0|1),
    *        padding (mm, default 2), margin (mm, default 1)
    */
@@ -402,6 +403,7 @@ const ROUTES = {
       copies,
       tapeCut: cut ?? TapeCut.EACH_LABEL,
       halfCut: q.get('halfcut') === '1' ? 1 : 0,
+      leadingHalfCut: model.halfcut ? q.get('lead') !== 'cut' : undefined,
       density: Math.max(-5, Math.min(5, Number(q.get('density')) || 0)),
       commandLevel: model.commandLevel,
     });

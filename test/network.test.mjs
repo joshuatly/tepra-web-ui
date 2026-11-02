@@ -10,7 +10,8 @@ import { makePacket, parsePacket, parseNetworkStatus, NetworkPrinter, isBusy } f
 import { parseEnvPrinters, normalizePrinter } from '../server/printers.js';
 import { decodePng } from '../server/png.js';
 import { imageToPage } from '../server/imageprint.js';
-import { startFakePrinter, parseJob } from './fake-sr5900p.mjs';
+import dgram from 'node:dgram';
+import { startFakePrinter, parseJob, makeReplyHeader } from './fake-sr5900p.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -59,10 +60,10 @@ await test('status bodies captured by hikalium', () => {
 
 // ---- Job bytes ---------------------------------------------------------------
 
-await test('network job header is byte-identical to the captured SR5900P stream', () => {
+await test('network job header is byte-identical to the captured SR5900P stream (margin in T)', () => {
   const page = { lengthDots: 104, widthDots: 8, marginDots: 42, rows: [Uint8Array.from([0xff])] };
   const bytes = buildNetworkJobBytes([page], {
-    copies: 1, tapeCut: TapeCut.EACH_LABEL, halfCut: 1, density: 0, commandLevel: 3,
+    copies: 1, tapeCut: TapeCut.EACH_LABEL, halfCut: 1, density: 0, commandLevel: 3, marginAsRows: false,
   });
   // From hikalium/sr5900p gen_tcp_data() with td.width = 100
   const expected = [
@@ -80,6 +81,31 @@ await test('network job header is byte-identical to the captured SR5900P stream'
     27, 123, 3, 64, 64, 125,
   ];
   assert.equal(hex(bytes), hex(expected));
+});
+
+await test('network job sends T = 0 and puts the leading margin in blank rows', () => {
+  const page = { lengthDots: 2, widthDots: 16, marginDots: 3, rows: [Uint8Array.from([0xff, 0x01]), Uint8Array.from([0x80, 0x00])] };
+  const bytes = buildNetworkJobBytes([page], {
+    copies: 1, tapeCut: TapeCut.EACH_LABEL, halfCut: 0, leadingHalfCut: true, density: 0, commandLevel: 3,
+  });
+  const expected = [
+    27, 123, 3, 64, 64, 125,
+    27, 123, 7, 123, 0, 0, 83, 84, 34, 125,
+    27, 123, 7, 67, 2, 1, 1, 1, 72, 125, // C: leading half cut, full cut after the label
+    27, 123, 4, 68, 5, 73, 125,
+    27, 123, 3, 71, 71, 125,
+    27, 123, 7, 76, 5, 0, 0, 0, 81, 125, // L = 3 margin rows + 2 label rows
+    27, 123, 5, 84, 0, 0, 84, 125,       // T = 0
+    27, 123, 4, 72, 5, 77, 125,
+    27, 123, 4, 115, 0, 115, 125,
+    ...[0, 1, 2].flatMap(() => [0x1b, 0x2e, 0, 0, 0, 1, 16, 0, 0x00, 0x00]),
+    0x1b, 0x2e, 0, 0, 0, 1, 16, 0, 0xff, 0x01,
+    0x1b, 0x2e, 0, 0, 0, 1, 16, 0, 0x80, 0x00,
+    0x0c,
+    27, 123, 3, 64, 64, 125,
+  ];
+  assert.equal(hex(bytes), hex(expected));
+  assert.equal(page.rows.length, 2, 'the caller\'s page is not modified');
 });
 
 await test('half-cut continuous adds the X frame only when enabled', () => {
@@ -200,7 +226,92 @@ await test('full print session against the fake printer', async () => {
     assert.deepEqual(cmds.slice(0, 4), ['0x0001', '0x0002', '0x0101', '0x0100']);
     assert.equal(cmds.at(-1), '0x0003');
     assert.ok(phases.includes('Done'));
+    assert.equal(fake.state.tcpOpenAtUnlock, true, 'the data connection must stay open until the unlock');
+    for (let i = 0; i < 50 && fake.state.tcpOpen; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(fake.state.tcpOpen, 0, 'the data connection is closed afterwards');
+
+    // pauses of STEP_PAUSE_MS (500 ms) around the TCP connect and before the job bytes
+    const at = (ev) => fake.state.events.find((e) => e.ev === ev).t;
+    const gaps = {
+      'lock → connect': at('tcp connect') - at('udp 0x0002'),
+      'connect → notify': at('udp 0x0101') - at('tcp connect'),
+      'stream ok → data': at('tcp data') - at('udp 0x0100'),
+    };
+    for (const [step, ms] of Object.entries(gaps)) assert.ok(ms >= 450, `${step}: ${ms} ms`);
   } finally {
+    await fake.close();
+  }
+});
+
+const smallPage = { lengthDots: 4, widthDots: 144, marginDots: 0, rows: Array.from({ length: 4 }, () => new Uint8Array(18)) };
+const smallJob = () => buildNetworkJobBytes([smallPage], { copies: 1, tapeCut: 0, halfCut: 0, density: 0, commandLevel: 3 });
+const fastOpts = (port) => ({ port, stepPauseMs: 10, timeoutMs: 150 });
+
+await test('a lost reply to the lock request still releases the print session', async () => {
+  const fake = await startFakePrinter({ port: PORT + 3, quiet: true, silent: [0x0002] });
+  try {
+    const printer = new NetworkPrinter('127.0.0.1', fastOpts(PORT + 3));
+    await assert.rejects(printer.print(smallJob(), { tapeCode: 4 }), /timed out/);
+    assert.equal(fake.state.locked, false, 'unlock must be sent after the lock timed out');
+    assert.equal(fake.state.jobs.length, 0);
+  } finally {
+    await fake.close();
+  }
+});
+
+await test('an error reported only in ER2 refuses the job', async () => {
+  // the "unidentified" SR5900P status captured by uzuna/sr5900p: ER = 0, ER2 = 66 (tape end)
+  const fake = await startFakePrinter({ port: PORT + 4, quiet: true, er2: 66 });
+  try {
+    const printer = new NetworkPrinter('127.0.0.1', fastOpts(PORT + 4));
+    await assert.rejects(printer.print(smallJob(), { tapeCode: 4 }), /Tape end/);
+    assert.equal(fake.state.locked, false);
+    assert.equal(fake.state.jobs.length, 0);
+  } finally {
+    await fake.close();
+  }
+});
+
+await test('a late reply to another command is not taken as the answer', async () => {
+  // an idle status arriving just before the lock reply used to be read as a refused lock
+  const fake = await startFakePrinter({
+    port: PORT + 5, quiet: true, printMs: 50,
+    beforeReply: (cmd, rinfo, reply) => {
+      if (cmd === 0x0002) reply(0x0001, Buffer.from([20, 0, 0, 3, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+    },
+  });
+  try {
+    const printer = new NetworkPrinter('127.0.0.1', fastOpts(PORT + 5));
+    await printer.print(smallJob(), { tapeCode: 4 });
+    assert.equal(fake.state.jobs.length, 1);
+  } finally {
+    await fake.close();
+  }
+});
+
+await test('a reply from another host is ignored', async () => {
+  // 127.0.0.2 is a loopback address on Linux; skip where it is not configured
+  const stranger = dgram.createSocket('udp4');
+  const bound = await new Promise((resolve) => {
+    stranger.once('error', () => resolve(false));
+    stranger.bind(0, '127.0.0.2', () => resolve(true));
+  });
+  if (!bound) { console.log('  (skipped: 127.0.0.2 is not available)'); return; }
+  const fake = await startFakePrinter({
+    port: PORT + 6, quiet: true, printMs: 50,
+    beforeReply: (cmd, rinfo) => {
+      if (cmd === 0x0002) {
+        const body = Buffer.from([0x02, 0x01, 0x00]); // "refused"
+        stranger.send(Buffer.concat([makeReplyHeader(0x0002, body.length), body]), rinfo.port, rinfo.address);
+      }
+    },
+  });
+  try {
+    const printer = new NetworkPrinter('127.0.0.1', fastOpts(PORT + 6));
+    await printer.print(smallJob(), { tapeCode: 4 });
+    assert.equal(fake.state.jobs.length, 1);
+  } finally {
+    stranger.close();
     await fake.close();
   }
 });

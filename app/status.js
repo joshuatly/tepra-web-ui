@@ -80,6 +80,17 @@ export function parseStatusBody(b, statusLength) {
   return s;
 }
 
+/**
+ * The device error the status reports, or 0.
+ *
+ * ER (byte 2) is the main error code, but the printer can report an error in ER2
+ * (byte 14 of the 20/24/78-byte bodies) with ER still 0: uzuna/sr5900p captured
+ * `ER = 0, ER2 = 66 (tape end)` from an SR5900P. Both use the PrintCoreDeviceStatus codes.
+ */
+export function deviceErrorCode(s) {
+  return s.ER || s.ER2 || 0;
+}
+
 /** AccessManagerBluetooth.parseStatusCode(): "ST:xx" 形式から 16 進 2 桁を読む */
 function parseAsciiCode(text, key) {
   const at = text.lastIndexOf(key);

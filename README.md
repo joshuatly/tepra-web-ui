@@ -41,7 +41,9 @@ stream. The server opens the print session with the printer and streams the job 
 - Reads the loaded tape from the printer and **sets the tape width to match**. The server also
   refuses a job laid out for a different tape, so you don't waste a cartridge.
 - Live printer status: state, errors (cover open, tape end, …) and the loaded tape
-- Copies, cut after each label / after the job / no cut, half cut, density
+- Copies, cut after each label / after the job / no cut, density
+- Half cut: the blank the printer feeds in front of the label is half-cut and stays on as an
+  easy-peel tab (on by default for the SR5900P / SR-R7900P), plus optional half cuts between labels
 - Batch jobs: queue several different labels and print them in one go; save/load as JSON
 - Saved printers (kept in a Docker volume), optional pre-configuration via environment variable
 - LAN discovery (UDP broadcast)
@@ -125,7 +127,8 @@ ones are centred. Query parameters:
 | `printer` | saved printer id, name or IP (optional when only one printer is configured) |
 | `copies` | 1–99 |
 | `cut` | `each` (default), `end`, `none` |
-| `halfcut` | `0` / `1` |
+| `lead` | `half` (default): half-cut the leading blank so it stays on as a peel tab; `cut`: cut it off |
+| `halfcut` | `1` half-cuts between labels (they stay joined on the backing); default `0` |
 | `density` | -5…5 |
 | `tape` | tape code (`1`=4mm `2`=6mm `3`=9mm `4`=12mm `5`=18mm `6`=24mm `7`=36mm); default: the loaded tape |
 | `fit` | `contain` (default) or `fill` (scale up to the full tape height) |
@@ -150,11 +153,15 @@ TEPRA_PRINTERS="Fake=127.0.0.1:19100" npm start
 npm test                                   # protocol, packets, PNG, print session, i18n, text layout
 npm run netprobe -- 192.168.1.50           # talk to a real printer: status only, prints nothing
 npm run netprobe -- 192.168.1.50 --test    # prints a 30 mm test pattern
+npm run netprobe -- 192.168.1.50 --test --lead cut --t-margin   # old cut behaviour, for comparison
 npm run netprobe -- --discover
 ```
 
 `npm run netprobe` is the quickest first check against real hardware. It shows the raw 20-byte
-status and whether the tape is detected.
+status and whether the tape is detected. With `--test` it also prints the `C` (cut) frame it
+sends. `--lead cut` cuts the leading blank off instead of half-cutting it, `--halfcut` and
+`--copies N` try half cuts between labels, and `--t-margin` sends the leading margin in the `T`
+command the way the official software does instead of as blank rows.
 
 ## How Wi-Fi printing works
 

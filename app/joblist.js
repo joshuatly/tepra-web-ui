@@ -121,7 +121,7 @@ function normalizeItem(raw = {}) {
 
 /**
  * @param {object[]} items
- * @param {{printer:string, tapeCode:number, tapeCut:number, halfCut:number,
+ * @param {{printer:string, tapeCode:number, tapeCut:number, halfCut:number, leadingHalfCut:number,
  *          density:number, sets:number}} settings
  */
 export function serializeJob(items, settings) {
@@ -133,6 +133,7 @@ export function serializeJob(items, settings) {
     print: {
       tapeCut: settings.tapeCut,
       halfCut: settings.halfCut,
+      leadingHalfCut: settings.leadingHalfCut,
       density: settings.density,
       sets: settings.sets,
     },
@@ -171,6 +172,7 @@ export function parseJob(text) {
     print: {
       tapeCut: num(print.tapeCut, 0, 2, 0),
       halfCut: num(print.halfCut, 0, 1, 0),
+      leadingHalfCut: num(print.leadingHalfCut, 0, 1, 1),
       density: num(print.density, -5, 5, 0),
       sets: Math.round(num(print.sets, 1, 99, 1)),
     },
