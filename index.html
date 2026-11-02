@@ -14,10 +14,11 @@
 <header class="topbar">
   <h1>TEPRA Web</h1>
   <span class="subtitle" data-i18n>Label printing for KING JIM TEPRA PRO</span>
-  <div class="spacer"></div>
-  <div id="conn-state" class="pill pill-off">Not connected</div>
-  <button id="btn-connect" class="primary" data-i18n>Connect</button>
-  <button id="btn-disconnect" hidden data-i18n>Disconnect</button>
+  <div class="topbar-conn">
+    <div id="conn-state" class="pill pill-off">Not connected</div>
+    <button id="btn-connect" class="primary js-connect" data-i18n>Connect</button>
+    <button id="btn-disconnect" class="js-disconnect" hidden data-i18n>Disconnect</button>
+  </div>
 </header>
 
 <div id="reconnect-banner" class="banner" hidden>
@@ -31,24 +32,36 @@
   <section class="panel" id="panel-edit">
     <h2 data-i18n>Label</h2>
 
-    <label class="field">
-      <span data-i18n>Text (one line per row)</span>
+    <div class="field">
+      <span class="field-head">
+        <label for="text" data-i18n>Text (one line per row)</label>
+        <button id="btn-text-help" class="hint-toggle" type="button" aria-expanded="false" aria-controls="text-help"
+          title="Help" data-i18n-title>?</button>
+      </span>
+      <p id="text-help" class="hint" hidden data-i18n>A line with only --- starts a new section. Sections sit side by side, and each one sizes its own lines to fill the tape. Icons and images go in at the cursor, on any line, and are as tall as the text on that line.</p>
       <textarea id="text" rows="3" spellcheck="false">TEPRA
 Web</textarea>
-    </label>
+    </div>
     <div class="text-tools">
       <button id="btn-insert-icon" data-i18n>Insert icon</button>
       <button id="btn-insert-image" data-i18n>Insert image</button>
       <input type="file" id="inline-image" accept="image/*" hidden>
       <button id="btn-new-section" data-i18n>New section</button>
     </div>
-    <p class="muted" data-i18n>A line with only --- starts a new section. Sections sit side by side, and each one sizes its own lines to fill the tape. Icons and images go in at the cursor, on any line, and are as tall as the text on that line.</p>
-
     <div class="grid2">
-      <label class="field">
-        <span><span data-i18n>Font</span> <output id="font-count" class="muted"></output></span>
-        <select id="font"></select>
-      </label>
+      <div class="field">
+        <span class="field-head">
+          <label for="font-input"><span data-i18n>Font</span> <output id="font-count"></output></label>
+          <button id="btn-load-fonts" class="link" type="button" data-i18n>Load installed fonts</button>
+        </span>
+        <div class="font-picker">
+          <input type="text" id="font-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
+            aria-controls="font-list" autocomplete="off" spellcheck="false"
+            placeholder="Search fonts" data-i18n-placeholder>
+          <ul id="font-list" class="font-list" role="listbox" hidden></ul>
+        </div>
+        <input type="hidden" id="font">
+      </div>
       <label class="field">
         <span data-i18n>Alignment</span>
         <select id="align">
@@ -57,17 +70,6 @@ Web</textarea>
           <option value="right" data-i18n>Right</option>
         </select>
       </label>
-    </div>
-
-    <div class="grid2">
-      <label class="field">
-        <span data-i18n>Filter fonts</span>
-        <input type="search" id="font-filter" placeholder="e.g. Arial / Mono / Noto" data-i18n-placeholder autocomplete="off">
-      </label>
-      <div class="field">
-        <span data-i18n>Font list</span>
-        <button id="btn-load-fonts" class="wide" data-i18n>Load installed fonts</button>
-      </div>
     </div>
 
     <div class="row-checks">
@@ -80,11 +82,6 @@ Web</textarea>
     <label class="field">
       <span><span data-i18n>Text size</span> <output id="font-scale-out">85%</output></span>
       <input type="range" id="font-scale" min="40" max="100" value="85">
-    </label>
-
-    <label class="field">
-      <span><span data-i18n>Line spacing</span> <output id="line-gap-out">2 dot</output></span>
-      <input type="range" id="line-gap" min="0" max="24" value="2">
     </label>
 
     <h2 data-i18n>Full-height image</h2>
@@ -130,30 +127,12 @@ Web</textarea>
       </label>
     </div>
 
-    <div class="grid2">
-      <label class="field">
-        <span data-i18n>Side padding (mm)</span>
-        <input type="number" id="padding" min="0" max="50" step="0.5" value="2">
-      </label>
-      <label class="field">
-        <span data-i18n>Leading tape margin (mm)</span>
-        <input type="number" id="tape-margin" min="0" max="50" step="0.5" value="1">
-      </label>
-    </div>
-
     <h2 data-i18n>Print settings</h2>
     <div class="grid2">
       <label class="field">
         <span data-i18n>Copies</span>
         <input type="number" id="copies" min="1" max="99" value="1">
       </label>
-      <label class="field">
-        <span data-i18n>Density (-5 to +5)</span>
-        <input type="number" id="density" min="-5" max="5" value="0">
-      </label>
-    </div>
-
-    <div class="grid2">
       <label class="field">
         <span data-i18n>Cut</span>
         <select id="tape-cut">
@@ -162,6 +141,9 @@ Web</textarea>
           <option value="2" data-i18n>Don't cut</option>
         </select>
       </label>
+    </div>
+
+    <div class="grid2">
       <label class="field">
         <span data-i18n>Leading blank</span>
         <select id="lead-cut">
@@ -169,9 +151,6 @@ Web</textarea>
           <option value="0" data-i18n>Cut off</option>
         </select>
       </label>
-    </div>
-
-    <div class="grid2">
       <label class="field">
         <span data-i18n>Half cut between labels (backing stays joined)</span>
         <select id="half-cut">
@@ -181,13 +160,42 @@ Web</textarea>
       </label>
     </div>
 
-    <div class="row-checks">
-      <label><input type="checkbox" id="dither"> <span data-i18n>Dither (for photos)</span></label>
-      <label><input type="checkbox" id="flip"> <span data-i18n>Flip vertically</span></label>
-    </div>
+    <!-- Settings that rarely change -->
+    <details id="more-settings" class="more-settings">
+      <summary data-i18n>More settings</summary>
+      <label class="field">
+        <span><span data-i18n>Line spacing</span> <output id="line-gap-out">2 dot</output></span>
+        <input type="range" id="line-gap" min="0" max="24" value="2">
+      </label>
+
+      <div class="grid2">
+        <label class="field">
+          <span data-i18n>Side padding (mm)</span>
+          <input type="number" id="padding" min="0" max="50" step="0.5" value="2">
+        </label>
+        <label class="field">
+          <span data-i18n>Leading tape margin (mm)</span>
+          <input type="number" id="tape-margin" min="0" max="50" step="0.5" value="1">
+        </label>
+      </div>
+
+      <div class="grid2">
+        <label class="field">
+          <span data-i18n>Density (-5 to +5)</span>
+          <input type="number" id="density" min="-5" max="5" value="0">
+        </label>
+      </div>
+
+      <div class="row-checks">
+        <label><input type="checkbox" id="dither"> <span data-i18n>Dither (for photos)</span></label>
+        <label><input type="checkbox" id="flip"> <span data-i18n>Flip vertically</span></label>
+      </div>
+    </details>
   </section>
 
-  <!-- Right, top: printer, preview and the print button. On phones this panel comes first. -->
+  <!-- Right column. On desktop it stays in view while the editor scrolls. -->
+  <div class="col-right" id="col-right">
+  <!-- Printer, preview and the print button. On phones this panel comes first. -->
   <section class="panel" id="panel-preview">
     <!-- Folds to a one-line summary once a printer is connected, so the preview comes first -->
     <details id="printer-section" class="printer-section" open>
@@ -221,10 +229,6 @@ Web</textarea>
           <button id="btn-net-discover" data-i18n>Find on network</button>
         </div>
         <ul id="net-found" class="found-list" hidden></ul>
-        <p class="muted small" data-i18n-html="net-help">
-          Find the printer's IP address in your router's DHCP client list (or try <em>Find on network</em>),
-          and give it a DHCP reservation so the address doesn't change.
-        </p>
       </div>
 
       <div id="conn-bluetooth" hidden>
@@ -244,7 +248,12 @@ Web</textarea>
           <button id="btn-scan" data-i18n>Scan paired devices</button>
         </div>
       </div>
-      <div id="backend-state" class="muted small"></div>
+      <!-- Only shows something when the backend or Bluetooth is unavailable -->
+      <p id="backend-state" class="muted small" hidden></p>
+      <div class="actions connect-row">
+        <button id="btn-connect-inline" class="primary js-connect" data-i18n>Connect</button>
+        <button id="btn-disconnect-inline" class="js-disconnect" hidden data-i18n>Disconnect</button>
+      </div>
     </details>
 
     <h2 data-i18n>Preview</h2>
@@ -315,7 +324,11 @@ Web</textarea>
     <h2 data-i18n>Log</h2>
     <pre id="log" class="log"></pre>
   </section>
+  </div>
 </main>
+
+<!-- Errors and warnings that need attention, so they aren't missed in the log -->
+<div id="toasts" class="toasts" aria-live="polite"></div>
 
 <div class="mobile-printbar">
   <span id="mobile-info" class="muted"></span>

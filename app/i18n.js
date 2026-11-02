@@ -28,13 +28,16 @@ export const JA = {
   'Label': 'ラベル',
   'Text (one line per row)': '本文（改行で行を分けます）',
   'Font': 'フォント',
+  'Search fonts': 'フォントを検索',
+  'No matching fonts': '一致するフォントがありません',
+  'Help': 'ヘルプ',
+  'More settings': '詳細設定',
+  'Could not keep the label in this browser (storage full or blocked). It will be lost on reload.':
+    'このブラウザにラベルを保存できませんでした（容量不足か保存が無効）。再読み込みすると消えます。',
   'Alignment': '文字揃え',
   'Center': '中央',
   'Left': '左',
   'Right': '右',
-  'Filter fonts': 'フォント名で絞り込み',
-  'e.g. Arial / Mono / Noto': '例: Hiragino / 明朝 / Mono',
-  'Font list': 'フォント一覧',
   'Load installed fonts': 'インストール済みフォントを読み込む',
   'Bold': '太字',
   'Italic': '斜体',
@@ -151,9 +154,7 @@ export const JA = {
   '{total}': '{total} 件',
   'No fonts returned': 'フォントを取得できませんでした',
   'Loaded {n} installed fonts': 'インストール済みフォントを {n} 件読み込みました',
-  'Loaded': '読み込み済み',
   'Could not list fonts: {error}': 'フォント一覧を取得できませんでした: {error}',
-  'Not supported in this browser': 'このブラウザでは一覧を取得できません',
   'Listing installed fonts needs Chrome or Edge (and HTTPS or localhost). Only common fonts are offered.':
     'インストール済みフォントの列挙は Chrome / Edge（HTTPS か localhost）でのみ使えます。代表的なフォントだけ選べます。',
   'Cannot print on this tape width': 'このテープ幅では印字できません',
@@ -253,8 +254,6 @@ export const JA = {
   'Ready. Turn the printer on, scan for paired devices and press Connect.':
     '準備完了。プリンタの電源を入れて「デバイスを探す」を押してください。',
   'Backend not running (start it with npm start or Docker).': 'バックエンド未起動（npm start か Docker で起動できます）',
-  'Server {version} — Wi-Fi printing over UDP/TCP 9100': 'サーバー {version} — Wi-Fi 印刷 (UDP/TCP 9100)',
-  'Server {version} ({platform}) — Bluetooth available': 'バックエンド稼働中 {version} ({platform}) — RFCOMM 利用可',
   'Bluetooth is not available on the server: {reason}': 'Bluetooth 直接接続が使えません: {reason}',
   'unknown reason': '原因不明',
 
@@ -366,8 +365,6 @@ const JA_PATTERNS = [
 
 /** data-i18n-html の段落 (英語は index.html にあるものを使う) */
 const JA_HTML = {
-  'net-help': 'プリンタの IP アドレスはルーターの DHCP クライアント一覧で確認できます（<em>ネットワークで探す</em> も試せます）。'
-    + 'アドレスが変わらないよう DHCP の固定割り当てをしておくと便利です。',
   'bt-help': 'SR-R2500P / SR-MK1 / SR-R7900P 向けの Bluetooth Classic (RFCOMM) 直結です。'
     + 'あらかじめサーバーを動かしているコンピュータの OS 設定でプリンタとペアリングしてください。Docker の中では使えません。',
   'job-help': '版下をためて一括で印字します。テープ幅と機種は印刷時の設定で描き直すので、あとから変えられます。',
