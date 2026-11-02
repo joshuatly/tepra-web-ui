@@ -308,6 +308,8 @@ function refreshTapeOptions() {
   $('tape').innerHTML = opts.join('');
   if (prev && [...$('tape').options].some((o) => o.value === prev)) $('tape').value = prev;
   else $('tape').value = String(printer.tapeKinds.includes(4) ? 4 : printer.tapeKinds[0]);
+  // Models without a half cutter ignore both half-cut settings
+  for (const id of ['lead-cut', 'half-cut']) $(id).disabled = !printer.halfcut;
 }
 
 // ---- ジョブ -------------------------------------------------------------
@@ -612,6 +614,9 @@ function printOptions(copies = Math.max(1, Number($('copies').value) || 1)) {
     copies,
     tapeCut: Number($('tape-cut').value),
     halfCut: Number($('half-cut').value),
+    // Half-cut the blank the printer feeds at the start of a job so it stays on the
+    // label as a peel tab, instead of cutting it off. Only for half-cut models.
+    leadingHalfCut: printer.halfcut ? $('lead-cut').value === '1' : undefined,
     density: Math.max(-5, Math.min(5, Number($('density').value) || 0)),
     priorityPrint: false,
     // ページ環境コマンドは機種の commandLevel で中身が変わる
@@ -1191,6 +1196,7 @@ $('btn-job-save').addEventListener('click', () => {
     tapeCode: Number($('tape').value),
     tapeCut: Number($('tape-cut').value),
     halfCut: Number($('half-cut').value),
+    leadingHalfCut: Number($('lead-cut').value),
     density: Number($('density').value),
     sets: Math.max(1, Number($('job-sets').value) || 1),
   });
@@ -1222,6 +1228,7 @@ $('job-file').addEventListener('change', async (e) => {
     }
     $('tape-cut').value = String(loaded.print.tapeCut);
     $('half-cut').value = String(loaded.print.halfCut);
+    $('lead-cut').value = String(loaded.print.leadingHalfCut);
     $('density').value = String(loaded.print.density);
     $('job-sets').value = String(loaded.print.sets);
 

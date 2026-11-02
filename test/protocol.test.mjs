@@ -78,6 +78,14 @@ checkEq('C: 毎ラベル/ハーフあり', tapeCutValue(0, 1), 0x01010202);
 checkEq('C: ジョブ後/ハーフなし', tapeCutValue(1, 0), 0x01010001);
 checkEq('C: ジョブ後/ハーフあり', tapeCutValue(1, 1), 0x01010002);
 checkEq('C: カットなし', tapeCutValue(2, 0), 0x00000000);
+// 先頭の余白だけを別に指定する (byte 0)。SR5900P 実機: 1 = 切り落とす, 2 = ハーフカット
+checkEq('C: 先頭ハーフ/毎ラベル', tapeCutValue(0, 0, true), 0x01010102);
+checkEq('C: 先頭カット/毎ラベル', tapeCutValue(0, 0, false), 0x01010101);
+checkEq('C: 先頭カット/ラベル間ハーフ', tapeCutValue(0, 1, false), 0x01010201);
+checkEq('C: 先頭ハーフ/ラベル間ハーフ', tapeCutValue(0, 1, true), 0x01010202);
+checkEq('C: 先頭ハーフ/ジョブ後', tapeCutValue(1, 0, true), 0x01010002);
+checkEq('C: 先頭ハーフ/カットなし', tapeCutValue(2, 0, true), 0x00000000);
+checkEq('C: 先頭 undefined は SDK と同じ', tapeCutValue(0, 1, undefined), 0x01010202);
 
 // makeCommand 'D': density + 5、範囲外は 0
 check('濃度 0', cmdDensity(0), [0x1b, 0x7b, 0x04, 0x44, 0x05, 0x49, 0x7d]);
@@ -400,7 +408,7 @@ function fakePage(lengthDots, widthDots = 72) {
     createItem({ text: 'Label 2', lengthMode: 'fixed', fixedLengthMm: 60 }, { name: '住所ラベル' }),
   ];
   const json = serializeJob(items, {
-    printer: 'SR-R2500P', tapeCode: 4, tapeCut: 1, halfCut: 0, density: 2, sets: 3,
+    printer: 'SR-R2500P', tapeCode: 4, tapeCut: 1, halfCut: 0, leadingHalfCut: 0, density: 2, sets: 3,
   });
   const back = parseJob(json);
 
@@ -414,6 +422,9 @@ function fakePage(lengthDots, widthDots = 72) {
   checkEq('ジョブ: テープ幅コード', back.tapeCode, 4);
   checkEq('ジョブ: カット設定', back.print.tapeCut, 1);
   checkEq('ジョブ: 濃度', back.print.density, 2);
+  checkEq('ジョブ: 先頭の余白', back.print.leadingHalfCut, 0);
+  checkEq('ジョブ: 先頭の余白 (古いファイルはハーフカット)',
+    parseJob(`{"format":"${JOB_FORMAT}","items":[{}],"print":{}}`).print.leadingHalfCut, 1);
   checkEq('ジョブ: セット数', back.print.sets, 3);
   checkEq('ジョブ: id は振り直す', back.items[0].id !== back.items[1].id, true);
 }

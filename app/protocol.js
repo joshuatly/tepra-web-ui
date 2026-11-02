@@ -63,8 +63,18 @@ export function cmdRasterHeader(widthDots) {
 /**
  * makeCommand 'C' 分岐が組み立てる 4 バイト値 (LE32)。
  * PROTOCOL.md 2.1 の表と同じ。
+ *
+ * The four bytes (LE, so byte 0 is the low byte) are, as observed on an SR5900P
+ * (PROTOCOL.md 2.1.1): [leading blank, between labels, final cut, ?],
+ * each 0 = no cut, 1 = full cut, 2 = half cut.
+ *
+ * The SDK drives byte 0 and byte 1 from the same HalfCut flag. Passing
+ * `leadingHalfCut` sets byte 0 on its own: true half-cuts the blank the printer
+ * feeds at the start of a job (head-to-cutter distance) so it stays on the label
+ * as a peel tab; false cuts it off as a scrap piece. Leave it undefined for the
+ * SDK behaviour.
  */
-export function tapeCutValue(tapeCut, halfCut) {
+export function tapeCutValue(tapeCut, halfCut, leadingHalfCut) {
   let base;
   if (tapeCut === TapeCut.EACH_LABEL) base = halfCut === 1 ? 0x01010200 : 0x01010100;
   else if (tapeCut === TapeCut.AFTER_JOB) base = 0x01010000;
@@ -72,9 +82,13 @@ export function tapeCutValue(tapeCut, halfCut) {
   else base = 0x01000000;
 
   if (tapeCut === TapeCut.NONE) return base >>> 0;
-  if (halfCut === 1) return (base | 2) >>> 0;
-  if (halfCut === 0) return (base | 1) >>> 0;
-  return base >>> 0;
+  let value = base;
+  if (halfCut === 1) value = base | 2;
+  else if (halfCut === 0) value = base | 1;
+  if (leadingHalfCut !== undefined && leadingHalfCut !== null) {
+    value = (value & ~0xff) | (leadingHalfCut ? 2 : 1);
+  }
+  return value >>> 0;
 }
 
 /** 濃度コマンド。density は -5..+5、範囲外は 0 に落ちる (makeCommand 'D')。 */
@@ -92,13 +106,13 @@ export function printSpeedValue(speed, allowMiddle) {
 
 /**
  * CommandFilter::makeJobEnvironmentCommand
- * @param {{tapeCut:number, halfCut:number, density:number}} params
+ * @param {{tapeCut:number, halfCut:number, leadingHalfCut?:boolean, density:number}} params
  */
 export function jobEnvironmentCommand(params) {
   return concat([
     frame(0x40),                                        // '@'  初期化
     frame(0x7b, [0x00, 0x00, 0x53, 0x54]),              // '{'  ジョブ開始 "ST"
-    frame(0x43, u32le(tapeCutValue(params.tapeCut, params.halfCut))), // 'C'
+    frame(0x43, u32le(tapeCutValue(params.tapeCut, params.halfCut, params.leadingHalfCut))), // 'C'
     cmdDensity(params.density),                         // 'D'
     frame(0x47),                                        // 'G'
   ]);
@@ -230,23 +244,44 @@ export function buildJobBytes(pages, opts) {
  *
  * Over the network the printer reports its status on the UDP 9100 control channel,
  * so the reset ('!') and auto-status ('I') frames used on Bluetooth are not sent.
- * The resulting stream is byte-for-byte what the official software sends
- * (see hikalium/sr5900p and takonomura/tepra-web):
+ * The frame order is what the official software sends (see hikalium/sr5900p and
+ * takonomura/tepra-web):
  *
  *   @  {ST  C  D  G  |  L  T  H  s  <raster>  FF  |  ...  |  @
+ *
+ * One difference: the leading margin goes out as blank raster rows and 'T' is 0.
+ * On a real SR5900P a non-zero 'T' was seen to make the printer cut a short scrap
+ * piece off the front of the job, and 'T' = 0 with the leading half cut is the
+ * setup known to leave the blank on as a peel tab (PROTOCOL.md 2.1.1).
+ * Pass `marginAsRows: false` to send the margin in 'T' as the official software does.
  */
 export function buildNetworkJobBytes(pages, opts) {
   const pageOpts = { ...opts, omitHalfCutContinuousOff: true };
+  const marginAsRows = opts.marginAsRows ?? true;
   const parts = [jobEnvironmentCommand(opts)];
   for (let copy = 0; copy < opts.copies; copy++) {
     for (const page of pages) {
-      parts.push(pageEnvironmentCommand(page.lengthDots, page.marginDots, pageOpts));
-      parts.push(rasterBlock(page.rows, page.widthDots));
+      const p = marginAsRows ? withMarginRows(page) : page;
+      parts.push(pageEnvironmentCommand(p.lengthDots, p.marginDots, pageOpts));
+      parts.push(rasterBlock(p.rows, p.widthDots));
       parts.push(cmdFormFeed());
     }
   }
   parts.push(cmdPrintEnd());
   return concat(parts);
+}
+
+/** Moves a page's leading margin ('T') into blank raster rows in front of the label. */
+export function withMarginRows(page) {
+  const margin = Math.max(0, page.marginDots | 0);
+  if (!margin) return page;
+  const blank = new Uint8Array((page.widthDots + 7) >> 3);
+  return {
+    ...page,
+    lengthDots: page.lengthDots + margin,
+    marginDots: 0,
+    rows: [...Array.from({ length: margin }, () => blank), ...page.rows],
+  };
 }
 
 export function concat(chunks) {

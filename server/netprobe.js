@@ -2,6 +2,11 @@
 //
 //   npm run netprobe -- 192.168.1.50            status only (prints nothing)
 //   npm run netprobe -- 192.168.1.50 --test     also prints a short test pattern
+//        --lead cut      cut the leading blank off instead of half-cutting it (default: half)
+//        --halfcut       half cut between labels (with --copies > 1)
+//        --copies N      print N copies in one job
+//        --t-margin      send the leading margin in 'T' (as the official software does)
+//                        instead of as blank rows
 //   npm run netprobe -- --discover              broadcast for printers on the LAN
 //   npm run netprobe -- 192.168.1.50 --port 9100 --model SR5900C
 
@@ -17,7 +22,7 @@ const opt = (name, def) => {
   const i = argv.indexOf(`--${name}`);
   return i === -1 ? def : argv[i + 1];
 };
-const host = argv.find((a, i) => !a.startsWith('--') && !argv[i - 1]?.match(/^--(port|model)$/));
+const host = argv.find((a, i) => !a.startsWith('--') && !argv[i - 1]?.match(/^--(port|model|lead|copies)$/));
 
 if (flag('discover') || !host) {
   console.log('Broadcasting a status request on UDP 9100…');
@@ -68,12 +73,22 @@ for (let y = 0; y < dots; y++) {
   }
 }
 const { rows, widthDots, lengthDots } = toRasterRows({ width: length, height: dots, gray });
-const bytes = buildNetworkJobBytes([{ rows, widthDots, lengthDots, marginDots: 14 }], {
-  copies: 1, tapeCut: TapeCut.EACH_LABEL, halfCut: 0, density: 0, commandLevel: model.commandLevel,
-});
-console.log(`Printing a 30 mm test pattern on ${tapeWidthLabel(tapeCode)} (${bytes.length} bytes)…`);
+const copies = Math.max(1, Math.min(10, Number(opt('copies', 1)) || 1));
+const jobOpts = {
+  copies,
+  tapeCut: TapeCut.EACH_LABEL,
+  halfCut: flag('halfcut') ? 1 : 0,
+  leadingHalfCut: model.halfcut ? opt('lead', 'half') !== 'cut' : undefined,
+  density: 0,
+  commandLevel: model.commandLevel,
+  marginAsRows: !flag('t-margin'),
+};
+const bytes = buildNetworkJobBytes([{ rows, widthDots, lengthDots, marginDots: 14 }], jobOpts);
+const cutFrame = [...bytes.subarray(16, 26)].map((b) => b.toString(16).padStart(2, '0')).join(' ');
+console.log(`Printing ${copies} × 30 mm test pattern on ${tapeWidthLabel(tapeCode)} (${bytes.length} bytes)…`);
+console.log(`  cut frame: ${cutFrame}   leading margin: ${jobOpts.marginAsRows ? 'blank rows, T=0' : "'T' command"}`);
 try {
-  await printer.print(bytes, { pages: 1, tapeCode });
+  await printer.print(bytes, { pages: copies, tapeCode });
   console.log('\n✓ Done');
 } catch (err) {
   console.log(`\n✗ ${err.message}`);

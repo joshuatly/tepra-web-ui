@@ -59,10 +59,10 @@ await test('status bodies captured by hikalium', () => {
 
 // ---- Job bytes ---------------------------------------------------------------
 
-await test('network job header is byte-identical to the captured SR5900P stream', () => {
+await test('network job header is byte-identical to the captured SR5900P stream (margin in T)', () => {
   const page = { lengthDots: 104, widthDots: 8, marginDots: 42, rows: [Uint8Array.from([0xff])] };
   const bytes = buildNetworkJobBytes([page], {
-    copies: 1, tapeCut: TapeCut.EACH_LABEL, halfCut: 1, density: 0, commandLevel: 3,
+    copies: 1, tapeCut: TapeCut.EACH_LABEL, halfCut: 1, density: 0, commandLevel: 3, marginAsRows: false,
   });
   // From hikalium/sr5900p gen_tcp_data() with td.width = 100
   const expected = [
@@ -80,6 +80,31 @@ await test('network job header is byte-identical to the captured SR5900P stream'
     27, 123, 3, 64, 64, 125,
   ];
   assert.equal(hex(bytes), hex(expected));
+});
+
+await test('network job sends T = 0 and puts the leading margin in blank rows', () => {
+  const page = { lengthDots: 2, widthDots: 16, marginDots: 3, rows: [Uint8Array.from([0xff, 0x01]), Uint8Array.from([0x80, 0x00])] };
+  const bytes = buildNetworkJobBytes([page], {
+    copies: 1, tapeCut: TapeCut.EACH_LABEL, halfCut: 0, leadingHalfCut: true, density: 0, commandLevel: 3,
+  });
+  const expected = [
+    27, 123, 3, 64, 64, 125,
+    27, 123, 7, 123, 0, 0, 83, 84, 34, 125,
+    27, 123, 7, 67, 2, 1, 1, 1, 72, 125, // C: leading half cut, full cut after the label
+    27, 123, 4, 68, 5, 73, 125,
+    27, 123, 3, 71, 71, 125,
+    27, 123, 7, 76, 5, 0, 0, 0, 81, 125, // L = 3 margin rows + 2 label rows
+    27, 123, 5, 84, 0, 0, 84, 125,       // T = 0
+    27, 123, 4, 72, 5, 77, 125,
+    27, 123, 4, 115, 0, 115, 125,
+    ...[0, 1, 2].flatMap(() => [0x1b, 0x2e, 0, 0, 0, 1, 16, 0, 0x00, 0x00]),
+    0x1b, 0x2e, 0, 0, 0, 1, 16, 0, 0xff, 0x01,
+    0x1b, 0x2e, 0, 0, 0, 1, 16, 0, 0x80, 0x00,
+    0x0c,
+    27, 123, 3, 64, 64, 125,
+  ];
+  assert.equal(hex(bytes), hex(expected));
+  assert.equal(page.rows.length, 2, 'the caller\'s page is not modified');
 });
 
 await test('half-cut continuous adds the X frame only when enabled', () => {
