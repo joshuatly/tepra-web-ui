@@ -10,7 +10,7 @@
   },
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/protocol.test.mjs && node test/network.test.mjs && node test/i18n.test.mjs",
+    "test": "node test/protocol.test.mjs && node test/network.test.mjs && node test/i18n.test.mjs && node test/layout.test.mjs",
     "fake-printer": "node test/fake-sr5900p.mjs",
     "probe": "node server/probe.js",
     "netprobe": "node server/netprobe.js"

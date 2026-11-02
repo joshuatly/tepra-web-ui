@@ -10,7 +10,7 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 COPY package.json ./
-COPY index.html favicon.svg manifest.webmanifest PROTOCOL.md LICENSE ./
+COPY index.html favicon.svg manifest.webmanifest PROTOCOL.md LICENSE THIRD_PARTY_LICENSES.md ./
 COPY app ./app
 COPY server ./server
 COPY test ./test

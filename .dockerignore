@@ -5,3 +5,4 @@ server/native
 *.md
 !PROTOCOL.md
 fake-out
+!THIRD_PARTY_LICENSES.md

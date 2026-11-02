@@ -7,11 +7,15 @@
 // ラスタを持ち回らないぶんファイルも小さい。
 
 import { t } from './i18n.js';
+import { SECTION_BREAK, imageKeys } from './layout.js';
 
 export const JOB_FORMAT = 'tepra-web/job@1';
 
 /** 保存ファイルに埋め込む画像の上限 (data URL の文字数) */
 const MAX_IMAGE_CHARS = 4 * 1024 * 1024;
+
+/** 1 枚の版下に差し込める画像の数 */
+const MAX_INLINE_IMAGES = 20;
 
 /** canvas に描いても安全な画像形式。SVG は外部参照を持てるので除く。 */
 const IMAGE_DATA_URL = /^data:image\/(png|jpeg|gif|webp|bmp);base64,[A-Za-z0-9+/=\s]+$/;
@@ -41,13 +45,25 @@ function imageUrl(value) {
   return IMAGE_DATA_URL.test(value) ? value : null;
 }
 
+/** 本文に差し込む画像 ("[img:N]" の N → data URL)。本文で使っているものだけ残す。 */
+function inlineImages(value, text) {
+  const out = {};
+  if (!value || typeof value !== 'object') return out;
+  for (const key of imageKeys(text).slice(0, MAX_INLINE_IMAGES)) {
+    const url = Object.hasOwn(value, key) ? imageUrl(value[key]) : null;
+    if (url) out[key] = url;
+  }
+  return out;
+}
+
 /**
  * 版下の設定。UI から読んだものも、ファイルから来たものもここを通す。
  * @param {object} raw
  */
 export function normalizeDesign(raw = {}) {
+  const text = str(raw.text, 2000);
   return {
-    text: str(raw.text, 2000),
+    text,
     fontFamily: str(raw.fontFamily, 200) || 'sans-serif',
     bold: !!raw.bold,
     italic: !!raw.italic,
@@ -59,19 +75,22 @@ export function normalizeDesign(raw = {}) {
     paddingMm: num(raw.paddingMm, 0, 50, 2),
     tapeMarginMm: num(raw.tapeMarginMm, 0, 50, 1),
     border: !!raw.border,
+    dividers: !!raw.dividers,
     dither: !!raw.dither,
     flip: !!raw.flip,
     imageDataUrl: imageUrl(raw.imageDataUrl),
     imagePosition: oneOf(raw.imagePosition, IMAGE_POSITIONS, 'left'),
+    images: inlineImages(raw.images, text),
   };
 }
 
 /** 一覧に出す短い見出し。本文の 1 行目から作る。 */
 export function itemLabel(item) {
   if (item.name) return item.name;
-  const firstLine = item.design.text.split('\n').find((l) => l.trim());
+  const firstLine = item.design.text.split('\n').find((l) => l.trim() && l.trim() !== SECTION_BREAK);
   if (firstLine) return firstLine.trim().slice(0, 24);
-  return item.design.imageDataUrl ? t('(image only)') : t('(empty label)');
+  return item.design.imageDataUrl || Object.keys(item.design.images).length
+    ? t('(image only)') : t('(empty label)');
 }
 
 let counter = 0;
