@@ -187,59 +187,65 @@ Web</textarea>
     </div>
   </section>
 
-  <!-- Right: printer, preview and output -->
-  <section class="panel" id="panel-output">
-    <h2 data-i18n>Printer</h2>
-    <div class="segmented" role="radiogroup" aria-label="Connection type" data-i18n-aria-label>
-      <label><input type="radio" name="conn-kind" value="network" checked> <span data-i18n>Wi-Fi / LAN</span></label>
-      <label><input type="radio" name="conn-kind" value="bluetooth"> <span data-i18n>Bluetooth</span></label>
-    </div>
+  <!-- Right, top: printer, preview and the print button. On phones this panel comes first. -->
+  <section class="panel" id="panel-preview">
+    <!-- Folds to a one-line summary once a printer is connected, so the preview comes first -->
+    <details id="printer-section" class="printer-section" open>
+      <summary>
+        <span class="section-title" data-i18n>Printer</span>
+        <span id="printer-summary" class="printer-summary" hidden></span>
+      </summary>
+      <div class="segmented" role="radiogroup" aria-label="Connection type" data-i18n-aria-label>
+        <label><input type="radio" name="conn-kind" value="network" checked> <span data-i18n>Wi-Fi / LAN</span></label>
+        <label><input type="radio" name="conn-kind" value="bluetooth"> <span data-i18n>Bluetooth</span></label>
+      </div>
 
-    <div id="conn-network">
-      <label class="field">
-        <span data-i18n>Saved printers</span>
-        <select id="net-printer"><option value="" data-i18n>(none saved yet)</option></select>
-      </label>
-      <div class="grid2">
+      <div id="conn-network">
         <label class="field">
-          <span data-i18n>IP address or host name</span>
-          <input type="text" id="net-host" placeholder="192.168.1.50" autocomplete="off" spellcheck="false">
+          <span data-i18n>Saved printers</span>
+          <select id="net-printer"><option value="" data-i18n>(none saved yet)</option></select>
         </label>
-        <label class="field">
-          <span data-i18n>Name</span>
-          <input type="text" id="net-name" placeholder="Label printer" data-i18n-placeholder autocomplete="off">
-        </label>
+        <div class="grid2">
+          <label class="field">
+            <span data-i18n>IP address or host name</span>
+            <input type="text" id="net-host" placeholder="192.168.1.50" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field">
+            <span data-i18n>Name</span>
+            <input type="text" id="net-name" placeholder="Label printer" data-i18n-placeholder autocomplete="off">
+          </label>
+        </div>
+        <div class="actions">
+          <button id="btn-net-save" data-i18n>Save printer</button>
+          <button id="btn-net-remove" class="link" disabled data-i18n>Remove</button>
+          <button id="btn-net-discover" data-i18n>Find on network</button>
+        </div>
+        <ul id="net-found" class="found-list" hidden></ul>
+        <p class="muted small" data-i18n-html="net-help">
+          Find the printer's IP address in your router's DHCP client list (or try <em>Find on network</em>),
+          and give it a DHCP reservation so the address doesn't change.
+        </p>
       </div>
-      <div class="actions">
-        <button id="btn-net-save" data-i18n>Save printer</button>
-        <button id="btn-net-remove" class="link" disabled data-i18n>Remove</button>
-        <button id="btn-net-discover" data-i18n>Find on network</button>
-      </div>
-      <ul id="net-found" class="found-list" hidden></ul>
-      <p class="muted small" data-i18n-html="net-help">
-        Find the printer's IP address in your router's DHCP client list (or try <em>Find on network</em>),
-        and give it a DHCP reservation so the address doesn't change.
-      </p>
-    </div>
 
-    <div id="conn-bluetooth" hidden>
-      <p class="muted small" data-i18n-html="bt-help">Bluetooth Classic (RFCOMM) for SR-R2500P / SR-MK1 / SR-R7900P. Pair the printer
-        with the computer running the server first. Not available inside Docker.</p>
-      <div class="grid2">
-        <label class="field">
-          <span data-i18n>Device</span>
-          <select id="device"><option value="" data-i18n>(not scanned)</option></select>
-        </label>
-        <label class="field">
-          <span data-i18n>RFCOMM channel</span>
-          <input type="text" id="channel" placeholder="Auto (from SDP)" data-i18n-placeholder inputmode="numeric">
-        </label>
+      <div id="conn-bluetooth" hidden>
+        <p class="muted small" data-i18n-html="bt-help">Bluetooth Classic (RFCOMM) for SR-R2500P / SR-MK1 / SR-R7900P. Pair the printer
+          with the computer running the server first. Not available inside Docker.</p>
+        <div class="grid2">
+          <label class="field">
+            <span data-i18n>Device</span>
+            <select id="device"><option value="" data-i18n>(not scanned)</option></select>
+          </label>
+          <label class="field">
+            <span data-i18n>RFCOMM channel</span>
+            <input type="text" id="channel" placeholder="Auto (from SDP)" data-i18n-placeholder inputmode="numeric">
+          </label>
+        </div>
+        <div class="actions">
+          <button id="btn-scan" data-i18n>Scan paired devices</button>
+        </div>
       </div>
-      <div class="actions">
-        <button id="btn-scan" data-i18n>Scan paired devices</button>
-      </div>
-    </div>
-    <div id="backend-state" class="muted small"></div>
+      <div id="backend-state" class="muted small"></div>
+    </details>
 
     <h2 data-i18n>Preview</h2>
     <div class="preview-toolbar">
@@ -264,7 +270,10 @@ Web</textarea>
     </div>
     <div class="progress"><div id="progress-bar"></div></div>
     <div id="progress-text" class="muted"></div>
+  </section>
 
+  <!-- Right, below: status, batch job and log -->
+  <section class="panel" id="panel-output">
     <h2 data-i18n>Printer status</h2>
     <table class="status" id="status-table">
       <tbody>

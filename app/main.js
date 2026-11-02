@@ -708,17 +708,53 @@ function showStatus(s) {
   });
   $('st-buffer').textContent = (s.RB ? t('buffer {bytes} B / ', { bytes: s.RB.toLocaleString() }) : '')
     + t('printed {n} label(s)', { n: s.PP });
+  updatePrinterSummary();
+}
+
+/**
+ * The one-line summary shown on the folded printer section:
+ * "Label printer · Wi-Fi — Ready · 12mm", or the error when there is one.
+ */
+function updatePrinterSummary() {
+  const el = $('printer-summary');
+  const on = !!active?.connected;
+  el.hidden = !on;
+  el.classList.remove('has-error');
+  if (!on) { el.textContent = ''; return; }
+  const parts = [];
+  const s = shownStatus;
+  if (s) {
+    const code = deviceErrorCode(s);
+    if (code !== 0) {
+      parts.push(DEVICE_ERROR[code] ? t(DEVICE_ERROR[code]) : t('Unknown ({code})', { code }));
+      el.classList.add('has-error');
+    } else {
+      parts.push(t(PRINTER_STATUS[s.ST] ?? 'Unknown'));
+    }
+    if (s.tapeWidthCode > 0) parts.push(tapeLabel(s.tapeWidthCode));
+  }
+  el.textContent = [connLabel || t('Connected'), parts.join(' · ')].filter(Boolean).join(' — ');
+  el.title = el.textContent;
 }
 
 /** Whether the backend can use Bluetooth (set by initTransport) */
 let btAvailable = false;
 /** Label shown in the connection pill while connected (kept for language switches) */
 let connLabel = null;
+/** Connection state the printer section was last folded for (null = not yet) */
+let foldedFor = null;
 
 function setConnected(on, label) {
   if (!on) {
     active = null;
     stopStatusPolling();
+  }
+  // Once connected the printer settings are locked, so fold them away and let the preview
+  // lead; open them again when the connection ends. Only on a change, so a section the user
+  // opened or closed by hand stays that way across language switches.
+  if (foldedFor !== on) {
+    foldedFor = on;
+    $('printer-section').open = !on;
   }
   connLabel = on ? label : null;
   $('conn-state').textContent = on ? (label || t('Connected')) : t('Not connected');
@@ -729,6 +765,7 @@ function setConnected(on, label) {
   for (const id of ['device', 'channel', 'net-printer', 'net-host', 'net-name']) $(id).disabled = on;
   $('btn-scan').disabled = on || !btAvailable;
   $('btn-net-discover').disabled = on;
+  updatePrinterSummary();
   setPrinting(printing);
 }
 
