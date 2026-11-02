@@ -111,10 +111,8 @@ label.
 
 ### Sections
 
-![The text box with two --- lines splitting the text into three sections](docs/images/en/editor-sections.png)
-
 A line with only `---` starts a new section (or press **New section**). The router label above
-is this text. Each section is sized on its own, so the 1-line icon section gets the full tape
+is this text ([screenshot](docs/images/en/editor-sections.png)). Each section is sized on its own, so the 1-line icon section gets the full tape
 height while the 2-line sections get two smaller lines.
 
 With **Label length → Fixed**, the text shrinks to fit the length you set.
@@ -124,9 +122,8 @@ With **Label length → Fixed**, the text shrinks to fit the length you set.
 ![The icon picker showing the Work tab with a grid of icons](docs/images/en/icon-picker.png)
 
 Press **Insert icon**, then pick one. The tabs follow TEPRA LINK 2 (Work, Life, Mark, Play,
-Vehicle, Food, Living things, Sign), and the search box understands English and Japanese:
-
-![Searching for "coffee" in the icon picker](docs/images/en/icon-search.png)
+Vehicle, Food, Living things, Sign), and the search box understands English and Japanese
+([screenshot](docs/images/en/icon-search.png)).
 
 The icon goes in at the cursor as a short code like `[tabler:coffee]` and is drawn as tall as the
 text on its line. You can also type the code by hand.
@@ -136,11 +133,9 @@ and [Phosphor](https://phosphoricons.com).
 
 ### Pictures in the text
 
-![The text box containing [img:2] Toolbox and [tabler:tool] Shelf B-3](docs/images/en/editor-image.png)
-
 Press **Insert image** and pick a file. It goes in at the cursor as `[img:1]`, `[img:2]`, …, on
 any line of any section, and is drawn as tall as the text on that line (the toolbox and cat
-pictures above are done this way). Simple black-and-white drawings and logos print best.
+pictures above are done this way; [screenshot](docs/images/en/editor-image.png)). Simple black-and-white drawings and logos print best.
 
 Pictures are scaled down when you add them (at most 512 px tall) and saved with the label and in
 batch files, so they survive a reload.
@@ -150,9 +145,8 @@ instead. Tick *Dither (for photos)* under **More settings** for photos.
 
 ### What actually gets printed
 
-Switch the preview from **Design** to **Printed dots** to see the exact dots the printer gets:
-
-![The router label in "Printed dots" mode](docs/images/en/label-dots.png)
+Switch the preview from **Design** to **Printed dots** to see the exact dots the printer gets
+([screenshot](docs/images/en/label-dots.png)).
 
 ## Batch printing
 
@@ -190,9 +184,8 @@ the server refuses to print a label laid out for a different tape than the one i
 
 ## On your phone
 
-<img src="docs/images/en/phone.png" width="300" alt="TEPRA Web on a phone: preview on top and a print bar fixed at the bottom">
-
-On a phone the preview comes first and the **Print** button stays at the bottom of the screen.
+On a phone the preview comes first and the **Print** button stays at the bottom of the screen
+([screenshot](docs/images/en/phone.png)).
 Add the page to your home screen to open it like an app.
 
 The interface is in English and Japanese. It follows your browser's language, and you can switch
