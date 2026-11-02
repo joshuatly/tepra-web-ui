@@ -21,7 +21,8 @@ stream. The server opens the print session with the printer and streams the job 
 ## Features
 
 - Label editor: multi-line text, any installed font (Chrome/Edge), bold/italic, alignment,
-  border, images (with optional dithering), automatic or fixed label length
+  border, a full-height image beside the text (with optional dithering), automatic or fixed
+  label length
 - **Sections:** put `---` on a line of its own to start a new section. Sections sit side by side
   along the label, and each one sizes its own lines to fill the tape, so a 1-line section gets big
   text next to a 3-line one. Optional divider lines between them. With a fixed label length the
@@ -31,6 +32,10 @@ stream. The server opens the print session with the printer and streams the job 
   English and Japanese and the TEPRA LINK 2 tabs (Work, Life, Mark, Play, Vehicle, Food, Living
   things, Sign). An icon is written as `[tabler:plug]` in the text and drawn at the size of the
   text around it.
+- **Images inside the text:** *Insert image* puts a picture at the cursor, on any line of any
+  section, written as `[img:1]`. It is drawn as tall as the text on that line, with its width
+  set by its shape. Images are scaled down (512 px tall at most) and saved with the label and
+  in batch files. The full-height image beside the text is still there for logos.
 - Live preview of both the design and the actual printed dots
 - **Wi-Fi / LAN printing for SR5900P / SR5900C / SR5900GS** (no driver, no Windows PC)
 - Reads the loaded tape from the printer and **sets the tape width to match**. The server also

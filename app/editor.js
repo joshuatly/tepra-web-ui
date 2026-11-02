@@ -24,7 +24,8 @@ import { drawIcon, isIconId } from './icons.js';
  * @property {boolean} border        枠線
  * @property {boolean} [dividers]    セクションの間に縦線を引く
  * @property {number} [sectionGapMm] セクションの間隔
- * @property {HTMLImageElement|null} image
+ * @property {HTMLImageElement|null} image   本文の左右に置く画像 (テープの高さいっぱい)
+ * @property {Object<string, HTMLImageElement>} [inlineImages] 本文の "[img:N]" に入る画像
  * @property {'left'|'right'} imagePosition
  * @property {number} imageGapMm
  */
@@ -60,6 +61,10 @@ function layoutText(spec, ctx, maxWidth) {
     align: spec.align,
     measure: measurer(ctx, spec),
     isIcon: isIconId,
+    imageAspect: (key) => {
+      const img = spec.inlineImages?.[key];
+      return img && img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : null;
+    },
     maxWidth,
   });
 }
@@ -135,6 +140,8 @@ export function renderLabel(spec) {
         const x = left + line.x + run.x;
         if (run.icon) {
           drawIcon(ctx, run.icon, x, line.centerY - line.fontPx / 2, line.fontPx, { bold: spec.bold });
+        } else if (run.image) {
+          ctx.drawImage(spec.inlineImages[run.image], x, line.centerY - line.fontPx / 2, run.width, line.fontPx);
         } else {
           ctx.fillText(run.text, x, line.centerY);
         }

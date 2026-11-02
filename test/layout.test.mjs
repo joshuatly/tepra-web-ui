@@ -4,8 +4,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  parseSections, parseRuns, iconIds, layoutSections, ICON_TOKEN,
+  parseSections, parseRuns, iconIds, imageKeys, layoutSections, ICON_TOKEN,
 } from '../app/layout.js';
+import { normalizeDesign } from '../app/joblist.js';
 
 let passed = 0;
 let failed = 0;
@@ -91,6 +92,41 @@ test('an icon is a square as tall as the text', () => {
   assert.equal(icon.width, line.fontPx);
   assert.equal(icon.x, a.width);
   assert.equal(b.x, a.width + icon.width);
+});
+
+test('image tokens become image runs on any line', () => {
+  assert.deepEqual(parseRuns('Logo [img:1] and [img:12]'),
+    [{ text: 'Logo ' }, { image: '1' }, { text: ' and ' }, { image: '12' }]);
+  assert.deepEqual(parseRuns('[img:2]', () => true, (key) => key !== '2'), [{ text: '[img:2]' }]);
+  assert.deepEqual(parseRuns('[img:x] [img:]'), [{ text: '[img:x] [img:]' }]);
+  assert.deepEqual(imageKeys('[img:1]\n---\nA [img:3] [img:1] [tabler:car]'), ['1', '3']);
+  assert.deepEqual(iconIds('[img:1] [tabler:car]'), ['tabler:car']);
+});
+
+test('an image is as tall as the text and as wide as its aspect ratio', () => {
+  const aspects = { 1: 2, 2: 0.5 };
+  const { sections } = layoutSections([['A'], ['x [img:1]', '[img:2] y', 'z']],
+    opts({ imageAspect: (key) => aspects[key] ?? null }));
+  const [first, second] = sections[1].lines;
+  const wide = first.runs.find((r) => r.image === '1');
+  const tall = second.runs.find((r) => r.image === '2');
+  assert.equal(wide.width, first.fontPx * 2);
+  assert.equal(tall.width, Math.round(first.fontPx * 0.5));
+  assert.equal(tall.x, 0);
+  // A missing image stays as text so the mistake is visible
+  const missing = layoutSections([['[img:9]']], opts({ imageAspect: () => null })).sections[0].lines[0];
+  assert.deepEqual(missing.runs.map((r) => r.text), ['[img:9]']);
+});
+
+test('saved designs keep only the images the text uses', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+  const d = normalizeDesign({
+    text: 'A [img:1]\n---\n[img:3]',
+    images: { 1: png, 2: png, 3: 'data:image/svg+xml;base64,PHN2Zz4=', __proto__: png },
+  });
+  assert.deepEqual(d.images, { 1: png });
+  assert.deepEqual(normalizeDesign({ text: 'x' }).images, {});
+  assert.deepEqual(normalizeDesign({ text: '[img:1]', images: 'nope' }).images, {});
 });
 
 test('a fixed length shrinks the text to fit', () => {

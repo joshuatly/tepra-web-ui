@@ -11,7 +11,7 @@ import {
   grayscale, ditherFloydSteinberg, toRasterRows, contentMarginDots, dotsToMm,
 } from './raster.js';
 import { renderLabel, drawPreview, drawBinarizedPreview } from './editor.js';
-import { SECTION_BREAK, iconIds } from './layout.js';
+import { SECTION_BREAK, iconIds, imageKeys } from './layout.js';
 import {
   ICON_TABS, loadIcons, iconsLoaded, iconSvg, iconsInTab, searchIcons,
 } from './icons.js';
@@ -35,6 +35,8 @@ let currentJob = null;
 let printing = false;
 let labelImage = null;      // HTMLImageElement (描画用)
 let labelImageUrl = null;   // 同じ画像の data URL (ジョブ保存用)
+/** 本文の "[img:N]" に入る画像。N → { url (保存用 data URL), img (描画用) } */
+let inlineImages = {};
 let lastRender = null; // { canvas, page }
 let backendState = null;
 
@@ -503,6 +505,7 @@ function readDesignFromUI() {
     flip: $('flip').checked,
     imageDataUrl: labelImageUrl,
     imagePosition: $('image-pos').value,
+    images: Object.fromEntries(Object.entries(inlineImages).map(([key, v]) => [key, v.url])),
   });
 }
 
@@ -534,6 +537,11 @@ async function applyDesignToUI(design) {
   if (design.imageDataUrl && !labelImage) log(t('Could not load the image stored in the batch item'), 'warn');
   $('image').value = '';
 
+  inlineImages = {};
+  for (const [key, img] of Object.entries(await loadInlineImages(design.images))) {
+    inlineImages[key] = { url: design.images[key], img };
+  }
+
   await ensureFontLoaded(`16px ${cssFamily(design.fontFamily)}`, design.text || FONT_SAMPLE);
   await ensureIcons(design.text);
 }
@@ -548,8 +556,20 @@ function loadImage(url) {
   });
 }
 
+/** 版下の images (N → data URL) を描画用の画像にする。読めなかったものは抜けたまま。 */
+async function loadInlineImages(images = {}) {
+  const out = {};
+  await Promise.all(Object.entries(images).map(async ([key, url]) => {
+    try { out[key] = await loadImage(url); } catch { /* 本文には [img:N] が文字のまま出る */ }
+  }));
+  if (Object.keys(out).length < Object.keys(images).length) {
+    log(t('Could not load the image stored in the batch item'), 'warn');
+  }
+  return out;
+}
+
 /** 版下の設定 + 機種 + テープ幅 → renderLabel に渡す LabelSpec */
-function specFrom(design, printer, tapeCode, image) {
+function specFrom(design, printer, tapeCode, image, inline = {}) {
   return {
     printer,
     tapeCode,
@@ -568,6 +588,7 @@ function specFrom(design, printer, tapeCode, image) {
     border: design.border,
     dividers: design.dividers,
     image,
+    inlineImages: inline,
     imagePosition: design.imagePosition,
     imageGapMm: 1.5,
   };
@@ -602,7 +623,8 @@ function buildPage() {
   const design = readDesignFromUI();
   const printer = currentPrinter();
   const tapeCode = Number($('tape').value);
-  return rasterize(specFrom(design, printer, tapeCode, labelImage), design);
+  const inline = Object.fromEntries(Object.entries(inlineImages).map(([key, v]) => [key, v.img]));
+  return rasterize(specFrom(design, printer, tapeCode, labelImage, inline), design);
 }
 
 /** ジョブの項目を、いまの機種・テープ幅で描く */
@@ -611,7 +633,8 @@ async function buildItemPage(item) {
   const image = item.design.imageDataUrl
     ? await loadImage(item.design.imageDataUrl).catch(() => null)
     : null;
-  const spec = specFrom(item.design, currentPrinter(), Number($('tape').value), image);
+  const inline = await loadInlineImages(item.design.images);
+  const spec = specFrom(item.design, currentPrinter(), Number($('tape').value), image, inline);
   return rasterize(spec, item.design);
 }
 
@@ -1430,6 +1453,48 @@ $('btn-new-section').addEventListener('click', () => {
   // (空行を作るとその行もセクションの 1 行に数えられて文字が小さくなる)。
   insertAtCursor(ta, `${before && !before.endsWith('\n') ? '\n' : ''}${SECTION_BREAK}${after.startsWith('\n') ? '' : '\n'}`);
   if (after.startsWith('\n')) ta.selectionStart = ta.selectionEnd = ta.selectionStart + 1;
+});
+
+/** 本文に入れる画像の最大の大きさ。いちばん広いテープ (36mm, 384 dot) より大きければ足りる。 */
+const INLINE_IMAGE_MAX = { height: 512, width: 2048 };
+
+/**
+ * 画像ファイルを本文用に縮めて PNG の data URL にする。ジョブ保存のサイズを抑えるのと、
+ * どの形式 (SVG を含む) でも保存できる形にそろえるため。透明部分は残る (白地に描かれる)。
+ */
+async function inlineImageUrl(file) {
+  const source = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(source);
+    const w = img.naturalWidth || 1;
+    const h = img.naturalHeight || 1;
+    const k = Math.min(1, INLINE_IMAGE_MAX.height / h, INLINE_IMAGE_MAX.width / w);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(w * k));
+    canvas.height = Math.max(1, Math.round(h * k));
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png');
+  } finally {
+    URL.revokeObjectURL(source);
+  }
+}
+
+$('btn-insert-image').addEventListener('click', () => $('inline-image').click());
+$('inline-image').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const url = await inlineImageUrl(file);
+    const img = await loadImage(url);
+    // 番号は本文とこれまでの画像のどちらとも重ならないものにする
+    const used = [...Object.keys(inlineImages), ...imageKeys($('text').value)].map(Number);
+    const key = String(Math.max(0, ...used) + 1);
+    inlineImages[key] = { url, img };
+    insertAtCursor($('text'), `[img:${key}]`);
+  } catch (err) {
+    log(t('Could not load image: {error}', { error: err.message }), 'err');
+  }
 });
 
 // 手で "[tabler:…]" と書いたときも、アイコンの読み込みを始める

@@ -38,9 +38,11 @@ Web</textarea>
     </label>
     <div class="text-tools">
       <button id="btn-insert-icon" data-i18n>Insert icon</button>
+      <button id="btn-insert-image" data-i18n>Insert image</button>
+      <input type="file" id="inline-image" accept="image/*" hidden>
       <button id="btn-new-section" data-i18n>New section</button>
     </div>
-    <p class="muted" data-i18n>A line with only --- starts a new section. Sections sit side by side, and each one sizes its own lines to fill the tape.</p>
+    <p class="muted" data-i18n>A line with only --- starts a new section. Sections sit side by side, and each one sizes its own lines to fill the tape. Icons and images go in at the cursor, on any line, and are as tall as the text on that line.</p>
 
     <div class="grid2">
       <label class="field">
@@ -85,7 +87,7 @@ Web</textarea>
       <input type="range" id="line-gap" min="0" max="24" value="2">
     </label>
 
-    <h2 data-i18n>Image</h2>
+    <h2 data-i18n>Full-height image</h2>
     <div class="grid2">
       <label class="field">
         <span data-i18n>File</span>

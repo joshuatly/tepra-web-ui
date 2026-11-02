@@ -42,8 +42,11 @@ export const JA = {
   'Section dividers': 'セクションの区切り線',
   'Insert icon': 'アイコンを挿入',
   'New section': 'セクションを追加',
-  'A line with only --- starts a new section. Sections sit side by side, and each one sizes its own lines to fill the tape.':
-    '--- だけの行から次のセクションになります。セクションは横に並び、それぞれの行数でテープ幅いっぱいに収まります。',
+  'A line with only --- starts a new section. Sections sit side by side, and each one sizes its own lines to fill the tape. Icons and images go in at the cursor, on any line, and are as tall as the text on that line.':
+    '--- だけの行から次のセクションになります。セクションは横に並び、それぞれの行数でテープ幅いっぱいに収まります。'
+    + 'アイコンと画像はカーソルの位置に入り、どの行にも置けます。高さはその行の文字と同じです。',
+  'Insert image': '画像を挿入',
+  'Full-height image': 'テープ幅いっぱいの画像',
   'Search icons (English or Japanese)': 'アイコンを検索（日本語・英語）',
   'Work': '仕事',
   'Life': '生活',

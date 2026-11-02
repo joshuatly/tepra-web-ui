@@ -7,12 +7,19 @@
 //   - セクションごとに行数が違ってよい。各セクションは自分の行数でテープ幅いっぱいに収める
 //     (1 行のセクションは大きく、3 行のセクションは小さくなる)。
 //   - "[tabler:plug]" のような書き方でアイコンを文字の間に入れる。大きさは同じ行の文字と同じ。
+//   - "[img:1]" で、版下に取り込んだ画像を同じように入れる。高さは文字と同じで、幅は縦横比なり。
 
 /** この行だけのときセクションの区切り */
 export const SECTION_BREAK = '---';
 
 /** アイコンの書き方。セット名は icons.json の id の前半 */
 export const ICON_TOKEN = /\[((?:tabler|maki|phosphor):[A-Za-z0-9-]+)\]/g;
+
+/** 取り込んだ画像の書き方。番号は版下の images のキー */
+export const IMAGE_TOKEN = /\[img:(\d{1,4})\]/g;
+
+/** 本文中の差し込み (アイコンと画像) */
+const TOKEN = /\[((?:tabler|maki|phosphor):[A-Za-z0-9-]+|img:\d{1,4})\]/g;
 
 const isBreak = (line) => line.trim() === SECTION_BREAK;
 
@@ -32,21 +39,23 @@ export function parseSections(text) {
 }
 
 /**
- * 1 行を文字とアイコンの並びに分ける。
+ * 1 行を文字・アイコン・画像の並びに分ける。
  * @param {string} line
  * @param {(id:string) => boolean} [isIcon] false を返した id は書いたままの文字として残す
- * @returns {Array<{text:string}|{icon:string}>}
+ * @param {(key:string) => boolean} [isImage] 同じく画像の番号
+ * @returns {Array<{text:string}|{icon:string}|{image:string}>}
  */
-export function parseRuns(line, isIcon = () => true) {
+export function parseRuns(line, isIcon = () => true, isImage = () => true) {
   const runs = [];
   let text = '';
   let last = 0;
-  for (const m of line.matchAll(ICON_TOKEN)) {
-    if (!isIcon(m[1])) continue;
+  for (const m of line.matchAll(TOKEN)) {
+    const image = m[1].startsWith('img:') ? m[1].slice(4) : null;
+    if (image !== null ? !isImage(image) : !isIcon(m[1])) continue;
     text += line.slice(last, m.index);
     if (text) runs.push({ text });
     text = '';
-    runs.push({ icon: m[1] });
+    runs.push(image !== null ? { image } : { icon: m[1] });
     last = m.index + m[0].length;
   }
   text += line.slice(last);
@@ -59,6 +68,11 @@ export function iconIds(text) {
   return [...new Set([...String(text ?? '').matchAll(ICON_TOKEN)].map((m) => m[1]))];
 }
 
+/** 本文に出てくる画像の番号 (重複なし) */
+export function imageKeys(text) {
+  return [...new Set([...String(text ?? '').matchAll(IMAGE_TOKEN)].map((m) => m[1]))];
+}
+
 /**
  * @typedef {Object} LayoutOptions
  * @property {number} heightDots      テープの印字可能ドット数
@@ -69,6 +83,7 @@ export function iconIds(text) {
  * @property {'left'|'center'|'right'} align  セクション内での行の揃え
  * @property {(text:string, fontPx:number) => number} measure  文字列の幅
  * @property {(id:string) => boolean} [isIcon]
+ * @property {(key:string) => number|null} [imageAspect] 画像の 幅 / 高さ。null なら無い画像 (文字のまま)
  * @property {number|null} [maxWidth] これより長くなるときは全体を縮める (固定長のとき)
  */
 
@@ -84,9 +99,12 @@ function layoutOnce(sections, o, shrink) {
 
     const laid = lines.map((line, i) => {
       let w = 0;
-      const runs = parseRuns(line, o.isIcon).map((run) => {
-        // アイコンは文字の高さと同じ大きさの正方形
-        const width = run.icon ? fontPx : o.measure(run.text, fontPx);
+      const aspect = (key) => (o.imageAspect ? o.imageAspect(key) : 1);
+      const runs = parseRuns(line, o.isIcon, (key) => aspect(key) > 0).map((run) => {
+        // アイコンは文字の高さと同じ大きさの正方形、画像は同じ高さで縦横比なりの幅
+        const width = run.icon ? fontPx
+          : run.image ? Math.max(1, Math.round(fontPx * aspect(run.image)))
+            : o.measure(run.text, fontPx);
         const placed = { ...run, x: w, width };
         w += width;
         return placed;
@@ -117,7 +135,7 @@ function layoutOnce(sections, o, shrink) {
  * @param {LayoutOptions} o
  * @returns {{width:number, shrink:number, sections:Array<{x:number, width:number,
  *   lines:Array<{x:number, centerY:number, fontPx:number, width:number,
- *   runs:Array<{text?:string, icon?:string, x:number, width:number}>}>}>}}
+ *   runs:Array<{text?:string, icon?:string, image?:string, x:number, width:number}>}>}>}}
  */
 export function layoutSections(sections, o) {
   let shrink = 1;
