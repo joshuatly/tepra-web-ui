@@ -21,6 +21,7 @@ import {
 import { BackendLink } from './backend.js';
 import { NetworkLink } from './netlink.js';
 import { PrintJob, tapeFeed, fetchStatus, endSession } from './job.js';
+import { deviceErrorCode } from './status.js';
 import {
   t, applyI18n, setI18nText, initLanguageSelect, languageEvents, isTranslationOf,
 } from './i18n.js';
@@ -666,9 +667,10 @@ let shownStatus = null;
 function showStatus(s) {
   shownStatus = s;
   $('st-state').textContent = `${t(PRINTER_STATUS[s.ST] ?? 'Unknown')} (0x${s.ST.toString(16)})`;
-  const err = DEVICE_ERROR[s.ER] ? t(DEVICE_ERROR[s.ER]) : t('Unknown ({code})', { code: s.ER });
-  $('st-error').textContent = s.ER === 0 ? t('None') : err;
-  $('st-error').style.color = s.ER === 0 ? '' : 'var(--err)';
+  const code = deviceErrorCode(s);
+  const err = DEVICE_ERROR[code] ? t(DEVICE_ERROR[code]) : t('Unknown ({code})', { code });
+  $('st-error').textContent = code === 0 ? t('None') : err;
+  $('st-error').style.color = code === 0 ? '' : 'var(--err)';
   $('st-tape').textContent = t('{tape} (TW=0x{tw}, type {type})', {
     tape: tapeLabel(s.tapeWidthCode), tw: s.TW.toString(16).padStart(2, '0'), type: s.TR,
   });
