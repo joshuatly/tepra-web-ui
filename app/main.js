@@ -137,12 +137,12 @@ async function connectTo(target) {
 async function connectNetwork(printer) {
   const target = getNetLink();
   $('conn-state').textContent = t('Connecting…');
-  $('btn-connect').disabled = true;
+  setConnectDisabled(true);
   let device;
   try {
     device = await target.connect(printer);
   } finally {
-    $('btn-connect').disabled = false;
+    setConnectDisabled(false);
   }
   active = target;
   lastTarget = { kind: 'network', ...device };
@@ -156,7 +156,7 @@ async function connectNetwork(printer) {
 async function connectBluetooth({ id, model, channel }) {
   const target = getLink();
   $('conn-state').textContent = t('Connecting…');
-  $('btn-connect').disabled = true;
+  setConnectDisabled(true);
   // バックエンドは繋ぎ直す前に古い接続を切るので、その通知で帯を出さない
   expectDisconnect = true;
   let device;
@@ -164,7 +164,7 @@ async function connectBluetooth({ id, model, channel }) {
     device = await target.connect({ id, model, channel });
   } finally {
     expectDisconnect = false;
-    $('btn-connect').disabled = false;
+    setConnectDisabled(false);
   }
   active = target;
   lastTarget = { kind: 'bluetooth', id, model, channel: device.channel ?? channel ?? null };
@@ -238,30 +238,131 @@ function pickDefaultFont() {
   return fontFamilies[0] || 'sans-serif';
 }
 
-/** 絞り込みを反映して <option> を作り直す。選択中のものは必ず残す。 */
+// The font picker is a text box you type into to search, with a list that shows each font
+// in itself. The chosen family lives in the hidden #font input, which the rest of the code reads.
+
+/** Makes `select` (or the current font) the chosen one and redraws the picker. */
 function renderFontOptions(select) {
-  const filter = $('font-filter').value.trim().toLowerCase();
   const chosen = select ?? $('font').value;
-  const shown = filter
-    ? fontFamilies.filter((f) => f.toLowerCase().includes(filter))
-    : fontFamilies;
-  // 絞り込みで選択中のものが消えると <select> の値が勝手に変わってしまうので、
-  // 一致しなくても先頭に残す (件数表示は一致した数を出す)
-  const list = shown.includes(chosen) || !chosen ? shown : [chosen, ...shown];
-
-  // フォント名は OS 由来なので innerHTML では組み立てない
-  $('font').replaceChildren(...list.map((family) => {
-    const option = document.createElement('option');
-    option.value = family;
-    option.textContent = family;
-    option.style.fontFamily = cssFamily(family);   // 一覧をそのフォントで見せる
-    return option;
-  }));
-  if (list.includes(chosen)) $('font').value = chosen;
-
-  const total = fontFamilies.length;
-  $('font-count').textContent = filter ? t('{shown} / {total}', { shown: shown.length, total }) : t('{total}', { total });
+  if (chosen) {
+    $('font').value = chosen;
+    if (document.activeElement !== $('font-input')) showChosenFont();
+  }
+  $('font-count').textContent = t('{total}', { total: fontFamilies.length });
+  if (!$('font-list').hidden) renderFontList();
 }
+
+/** The text box shows the chosen family, set in that family */
+function showChosenFont() {
+  const family = $('font').value;
+  $('font-input').value = family;
+  $('font-input').style.fontFamily = family ? cssFamily(family) : '';
+}
+
+/** Families matching what is typed in the box (all of them while it still shows the chosen one) */
+function fontMatches() {
+  const typed = $('font-input').value.trim().toLowerCase();
+  if (!typed || $('font-input').value === $('font').value) return fontFamilies;
+  return fontFamilies.filter((f) => f.toLowerCase().includes(typed));
+}
+
+/** Index of the highlighted row in the open list */
+let fontActive = -1;
+
+function renderFontList() {
+  const list = $('font-list');
+  const matches = fontMatches();
+  const chosen = $('font').value;
+  if (fontActive >= matches.length) fontActive = matches.length - 1;
+  if (!matches.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = t('No matching fonts');
+    list.replaceChildren(li);
+    $('font-input').removeAttribute('aria-activedescendant');
+    return;
+  }
+  // Font names come from the OS, so build the list without innerHTML
+  list.replaceChildren(...matches.map((family, i) => {
+    const li = document.createElement('li');
+    li.id = `font-opt-${i}`;
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', i === fontActive ? 'true' : 'false');
+    if (family === chosen) li.classList.add('current');
+    li.textContent = family;
+    li.style.fontFamily = cssFamily(family);   // each row in its own font
+    li.dataset.family = family;
+    return li;
+  }));
+  if (fontActive >= 0) {
+    $('font-input').setAttribute('aria-activedescendant', `font-opt-${fontActive}`);
+    list.children[fontActive].scrollIntoView({ block: 'nearest' });
+  } else {
+    $('font-input').removeAttribute('aria-activedescendant');
+  }
+}
+
+function openFontList() {
+  const matches = fontMatches();
+  fontActive = Math.max(0, matches.indexOf($('font').value));
+  $('font-list').hidden = false;
+  $('font-input').setAttribute('aria-expanded', 'true');
+  renderFontList();
+}
+
+function closeFontList() {
+  $('font-list').hidden = true;
+  $('font-input').setAttribute('aria-expanded', 'false');
+  $('font-input').removeAttribute('aria-activedescendant');
+}
+
+function chooseFont(family) {
+  closeFontList();
+  $('font').value = family;
+  showChosenFont();
+  renderFontOptions(family);
+  useFont(family);
+}
+
+$('font-input').addEventListener('focus', () => {
+  $('font-input').select();
+  openFontList();
+});
+$('font-input').addEventListener('input', () => {
+  $('font-input').style.fontFamily = '';
+  fontActive = 0;
+  if ($('font-list').hidden) openFontList();
+  else renderFontList();
+});
+$('font-input').addEventListener('keydown', (e) => {
+  const count = fontMatches().length;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if ($('font-list').hidden) { openFontList(); return; }
+    if (!count) return;
+    fontActive = (fontActive + (e.key === 'ArrowDown' ? 1 : -1) + count) % count;
+    renderFontList();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    const family = fontMatches()[fontActive];
+    if (family) chooseFont(family);
+  } else if (e.key === 'Escape' && !$('font-list').hidden) {
+    e.preventDefault();
+    closeFontList();
+    showChosenFont();
+    $('font-input').select();
+  }
+});
+$('font-input').addEventListener('blur', () => {
+  closeFontList();
+  showChosenFont();
+});
+// mousedown, not click: keeps the focus in the box so blur doesn't close the list first
+$('font-list').addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  const li = e.target.closest('li[data-family]');
+  if (li) chooseFont(li.dataset.family);
+});
 
 async function useFont(family) {
   prefs.set(FONT_STORAGE_KEY, family);
@@ -278,12 +379,11 @@ async function loadLocalFonts({ silent = false } = {}) {
     setFontFamilies(families);
     await useFont($('font').value);
     log(t('Loaded {n} installed fonts', { n: families.length }), 'ok');
-    $('btn-load-fonts').disabled = true;
-    setI18nText($('btn-load-fonts'), 'Loaded');
+    $('btn-load-fonts').hidden = true;
   } catch (err) {
     if (silent) return;
     // 許可を拒否された場合もここに来る
-    log(t('Could not list fonts: {error}', { error: err.message }), 'warn');
+    log(t('Could not list fonts: {error}', { error: err.message }), 'warn', { toast: true });
   }
 }
 
@@ -291,8 +391,7 @@ async function initFonts() {
   setFontFamilies(knownFamilies(), { keep: false });
 
   if (!hasLocalFontApi()) {
-    $('btn-load-fonts').disabled = true;
-    setI18nText($('btn-load-fonts'), 'Not supported in this browser');
+    $('btn-load-fonts').hidden = true;
     log(t('Listing installed fonts needs Chrome or Edge (and HTTPS or localhost). '
       + 'Only common fonts are offered.'), 'warn');
   } else if (await localFontPermission() === 'granted') {
@@ -437,6 +536,7 @@ let lastJobBuild = [];
 
 function updateJobSummary(built = null) {
   if (built) lastJobBuild = built;
+  scheduleSave();
   const has = jobItems.length > 0;
   const sets = Math.max(1, Number($('job-sets').value) || 1);
   const labels = jobItems.reduce((n, it) => n + it.copies, 0) * sets;
@@ -661,6 +761,7 @@ function printOptions(copies = Math.max(1, Number($('copies').value) || 1)) {
 }
 
 function refresh() {
+  scheduleSave();
   const built = buildPage();
   lastRender = built;
   if (!built) {
@@ -683,7 +784,12 @@ function refresh() {
 
 // ---- ログ / 状態表示 -----------------------------------------------------
 
-function log(message, kind = 'info') {
+/**
+ * Adds a line to the log. Errors also pop up as a toast, since the log is far down the page;
+ * pass { toast: true } for a warning the user needs to see, or { toast: false } when the
+ * message is already shown somewhere else (the reconnect banner).
+ */
+function log(message, kind = 'info', { toast = kind === 'err' } = {}) {
   const el = $('log');
   const time = new Date().toLocaleTimeString([], { hour12: false });
   const line = document.createElement('div');
@@ -691,6 +797,34 @@ function log(message, kind = 'info') {
   line.textContent = `[${time}] ${message}`;
   el.appendChild(line);
   el.scrollTop = el.scrollHeight;
+  if (toast) showToast(message, kind === 'err' ? 'err' : 'warn');
+}
+
+const MAX_TOASTS = 3;
+
+function showToast(message, kind = 'err') {
+  const box = $('toasts');
+  // The same message again (e.g. a retry that fails the same way): just restart its timer
+  for (const old of box.children) {
+    if (old.dataset.message === message) old.remove();
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast ${kind}`;
+  toast.dataset.message = message;
+  toast.setAttribute('role', kind === 'err' ? 'alert' : 'status');
+  const text = document.createElement('span');
+  text.className = 'toast-text';
+  text.textContent = message;
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '×';
+  close.title = t('Close');
+  close.setAttribute('aria-label', t('Close'));
+  close.addEventListener('click', () => toast.remove());
+  toast.append(text, close);
+  box.append(toast);
+  while (box.children.length > MAX_TOASTS) box.firstElementChild.remove();
+  setTimeout(() => toast.remove(), kind === 'err' ? 10000 : 6000);
 }
 
 /** Last status shown, so the table can be redrawn in another language */
@@ -708,27 +842,64 @@ function showStatus(s) {
   });
   $('st-buffer').textContent = (s.RB ? t('buffer {bytes} B / ', { bytes: s.RB.toLocaleString() }) : '')
     + t('printed {n} label(s)', { n: s.PP });
+  updatePrinterSummary();
+}
+
+/**
+ * The one-line summary shown on the folded printer section:
+ * "Label printer · Wi-Fi — Ready · 12mm", or the error when there is one.
+ */
+function updatePrinterSummary() {
+  const el = $('printer-summary');
+  const on = !!active?.connected;
+  el.hidden = !on;
+  el.classList.remove('has-error');
+  if (!on) { el.textContent = ''; return; }
+  const parts = [];
+  const s = shownStatus;
+  if (s) {
+    const code = deviceErrorCode(s);
+    if (code !== 0) {
+      parts.push(DEVICE_ERROR[code] ? t(DEVICE_ERROR[code]) : t('Unknown ({code})', { code }));
+      el.classList.add('has-error');
+    } else {
+      parts.push(t(PRINTER_STATUS[s.ST] ?? 'Unknown'));
+    }
+    if (s.tapeWidthCode > 0) parts.push(tapeLabel(s.tapeWidthCode));
+  }
+  el.textContent = [connLabel || t('Connected'), parts.join(' · ')].filter(Boolean).join(' — ');
+  el.title = el.textContent;
 }
 
 /** Whether the backend can use Bluetooth (set by initTransport) */
 let btAvailable = false;
 /** Label shown in the connection pill while connected (kept for language switches) */
 let connLabel = null;
+/** Connection state the printer section was last folded for (null = not yet) */
+let foldedFor = null;
 
 function setConnected(on, label) {
   if (!on) {
     active = null;
     stopStatusPolling();
   }
+  // Once connected the printer settings are locked, so fold them away and let the preview
+  // lead; open them again when the connection ends. Only on a change, so a section the user
+  // opened or closed by hand stays that way across language switches.
+  if (foldedFor !== on) {
+    foldedFor = on;
+    $('printer-section').open = !on;
+  }
   connLabel = on ? label : null;
   $('conn-state').textContent = on ? (label || t('Connected')) : t('Not connected');
   $('conn-state').className = `pill ${on ? 'pill-on' : 'pill-off'}`;
-  $('btn-connect').hidden = on;
-  $('btn-disconnect').hidden = !on;
+  for (const el of document.querySelectorAll('.js-connect')) el.hidden = on;
+  for (const el of document.querySelectorAll('.js-disconnect')) el.hidden = !on;
   for (const el of document.querySelectorAll('input[name=conn-kind]')) el.disabled = on;
   for (const id of ['device', 'channel', 'net-printer', 'net-host', 'net-name']) $(id).disabled = on;
   $('btn-scan').disabled = on || !btAvailable;
   $('btn-net-discover').disabled = on;
+  updatePrinterSummary();
   setPrinting(printing);
 }
 
@@ -816,7 +987,7 @@ function networkTarget() {
 
 async function saveNetPrinter({ quiet = false } = {}) {
   const target = networkTarget();
-  if (!target) { log(t("Enter the printer's IP address first"), 'warn'); return null; }
+  if (!target) { log(t("Enter the printer's IP address first"), 'warn', { toast: true }); return null; }
   try {
     const { printer, printers } = await NetworkLink.savePrinter({
       name: $('net-name').value.trim() || target.name || target.host,
@@ -840,7 +1011,7 @@ function matchLoadedTape(status) {
   const code = String(status.tapeWidthCode);
   if ($('tape').value === code) return;
   if (![...$('tape').options].some((o) => o.value === code)) {
-    log(t('Loaded tape ({tape}) is not supported by {model}', { tape: tapeLabel(status.tapeWidthCode), model: $('printer').value }), 'warn');
+    log(t('Loaded tape ({tape}) is not supported by {model}', { tape: tapeLabel(status.tapeWidthCode), model: $('printer').value }), 'warn', { toast: true });
     return;
   }
   $('tape').value = code;
@@ -962,7 +1133,7 @@ $('btn-scan').addEventListener('click', async () => {
     if (!devices.length) {
       setDevicePlaceholder('(none found)');
       log(t('No paired Bluetooth devices found. '
-        + 'Pair the printer in the OS settings first.'), 'warn');
+        + 'Pair the printer in the OS settings first.'), 'warn', { toast: true });
       return;
     }
     select.innerHTML = devices
@@ -995,14 +1166,19 @@ function autoSelectModelFromDevice() {
 
 $('device').addEventListener('change', autoSelectModelFromDevice);
 
-$('btn-connect').addEventListener('click', async () => {
+/** The Connect buttons (top bar and printer section) */
+function setConnectDisabled(disabled) {
+  for (const el of document.querySelectorAll('.js-connect')) el.disabled = disabled;
+}
+
+async function onConnectClick() {
   let target;
   if (connKind() === 'network') {
     target = networkTarget();
-    if (!target) { log(t('Pick a saved printer or type its IP address first'), 'warn'); return; }
+    if (!target) { log(t('Pick a saved printer or type its IP address first'), 'warn', { toast: true }); return; }
   } else {
     const id = $('device').value;
-    if (!id) { log(t('Scan for paired devices and pick the printer first'), 'warn'); return; }
+    if (!id) { log(t('Scan for paired devices and pick the printer first'), 'warn', { toast: true }); return; }
     target = { kind: 'bluetooth', id, model: $('printer').value, channel: Number($('channel').value) || null };
   }
   try {
@@ -1011,10 +1187,12 @@ $('btn-connect').addEventListener('click', async () => {
     if (target.unsaved) await saveNetPrinter({ quiet: true });
   } catch (err) {
     setConnected(false);
-    log(t('Connection failed: {error}', { error: err.message }), 'err');
+    log(t('Connection failed: {error}', { error: err.message }), 'err', { toast: false });
     showReconnect(t('Connection failed: {error}', { error: err.message }));
   }
-});
+}
+
+for (const el of document.querySelectorAll('.js-connect')) el.addEventListener('click', onConnectClick);
 
 $('btn-reconnect').addEventListener('click', async () => {
   if (!lastTarget) return;
@@ -1026,7 +1204,7 @@ $('btn-reconnect').addEventListener('click', async () => {
     log(t('Reconnected'), 'ok');
   } catch (err) {
     setConnected(false);
-    log(t('Reconnect failed: {error}', { error: err.message }), 'err');
+    log(t('Reconnect failed: {error}', { error: err.message }), 'err', { toast: false });
     showReconnect(t('Reconnect failed: {error}. Check the printer is on and try again.', { error: err.message }));
   } finally {
     button.disabled = false;
@@ -1036,7 +1214,7 @@ $('btn-reconnect').addEventListener('click', async () => {
 
 $('btn-reconnect-dismiss').addEventListener('click', hideReconnect);
 
-$('btn-disconnect').addEventListener('click', async () => {
+async function onDisconnectClick() {
   expectDisconnect = true;
   try {
     if (active) {
@@ -1049,7 +1227,9 @@ $('btn-disconnect').addEventListener('click', async () => {
   } finally {
     expectDisconnect = false;
   }
-});
+}
+
+for (const el of document.querySelectorAll('.js-disconnect')) el.addEventListener('click', onDisconnectClick);
 
 $('btn-status').addEventListener('click', async () => {
   try {
@@ -1154,7 +1334,7 @@ $('btn-print').addEventListener('click', async () => {
 });
 
 $('btn-job-print').addEventListener('click', async () => {
-  if (!jobItems.length) { log(t('The batch is empty'), 'warn'); return; }
+  if (!jobItems.length) { log(t('The batch is empty'), 'warn', { toast: true }); return; }
   if (!printableModel()) return;
 
   const sets = Math.max(1, Math.min(99, Number($('job-sets').value) || 1));
@@ -1170,7 +1350,7 @@ $('btn-job-print').addEventListener('click', async () => {
   }
 
   if (skipped.length) {
-    log(t('Skipping items that do not fit this tape width: {items}', { items: skipped.join(', ') }), 'warn');
+    log(t('Skipping items that do not fit this tape width: {items}', { items: skipped.join(', ') }), 'warn', { toast: true });
   }
   if (!pages.length) { log(t('No printable items'), 'err'); return; }
 
@@ -1361,8 +1541,6 @@ $('line-gap').addEventListener('input', () => {
   refresh();
 });
 
-$('font').addEventListener('change', () => useFont($('font').value));
-$('font-filter').addEventListener('input', () => renderFontOptions());
 $('btn-load-fonts').addEventListener('click', () => loadLocalFonts());
 
 for (const id of ['text', 'align', 'bold', 'italic', 'border', 'dividers', 'tape',
@@ -1532,13 +1710,111 @@ initLanguageSelect($('lang'));
 if (isTranslationOf($('text').value, DEFAULT_TEXT)) $('text').value = t(DEFAULT_TEXT);
 languageEvents.addEventListener('change', relocalize);
 
+// ---- Keeping the label between visits -----------------------------------
+// The label being edited (design + print settings) and the batch are kept in localStorage,
+// so a reload or a closed tab doesn't lose them. Nothing is saved until they are restored.
+
+const PRINT_SETTING_IDS = ['copies', 'density', 'tape-cut', 'lead-cut', 'half-cut', 'job-sets'];
+let saveReady = false;
+let saveTimer = null;
+let savedBatch = null;
+let warnedSaveFailed = false;
+
+function scheduleSave() {
+  if (!saveReady) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveSession, 400);
+}
+
+/** localStorage.setItem that says whether it worked (quota, private mode) */
+function store(key, value) {
+  try {
+    if (value === null) localStorage.removeItem(`tepra-web.${key}`);
+    else localStorage.setItem(`tepra-web.${key}`, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function saveSession() {
+  const print = Object.fromEntries(PRINT_SETTING_IDS.map((id) => [id, $(id).value]));
+  let ok = store('draft', JSON.stringify({ design: readDesignFromUI(), print }));
+
+  const batch = jobItems.length ? JSON.stringify(jobItems.map(({ name, copies, design }) => ({ name, copies, design }))) : null;
+  if (batch !== savedBatch) {
+    if (store('batch', batch)) savedBatch = batch;
+    else ok = false;
+  }
+  if (!ok && !warnedSaveFailed) {
+    // Usually images too big for the browser's storage; the page itself still works
+    warnedSaveFailed = true;
+    log(t('Could not keep the label in this browser (storage full or blocked). It will be lost on reload.'), 'warn');
+  }
+}
+
+function readStored(key) {
+  try {
+    const raw = localStorage.getItem(`tepra-web.${key}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function restoreSession() {
+  const draft = readStored('draft');
+  if (draft?.design) {
+    const design = normalizeDesign(draft.design);
+    if (isTranslationOf(design.text, DEFAULT_TEXT)) design.text = t(DEFAULT_TEXT);
+    await applyDesignToUI(design);
+  }
+  for (const id of PRINT_SETTING_IDS) {
+    const value = draft?.print?.[id];
+    if (typeof value !== 'string') continue;
+    const el = $(id);
+    if (el.tagName === 'SELECT' ? [...el.options].some((o) => o.value === value) : Number.isFinite(Number(value))) {
+      el.value = value;
+    }
+  }
+
+  const batch = readStored('batch');
+  if (Array.isArray(batch) && batch.length) {
+    savedBatch = JSON.stringify(batch);
+    jobItems = batch.slice(0, 500).map((it) => createItem(it.design, { name: it.name, copies: it.copies }));
+    for (const item of jobItems) {
+      await ensureFontLoaded(`16px ${cssFamily(item.design.fontFamily)}`, item.design.text || FONT_SAMPLE);
+    }
+  }
+}
+
+for (const id of PRINT_SETTING_IDS) $(id).addEventListener('change', scheduleSave);
+
+// ---- Small UI toggles ---------------------------------------------------
+
+$('btn-text-help').addEventListener('click', () => {
+  const open = $('text-help').hidden;
+  $('text-help').hidden = !open;
+  $('btn-text-help').setAttribute('aria-expanded', String(open));
+});
+
+$('more-settings').open = prefs.get('more-settings') === '1';
+$('more-settings').addEventListener('toggle', () => {
+  prefs.set('more-settings', $('more-settings').open ? '1' : '0');
+});
+
 // ---- 起動 ---------------------------------------------------------------
 
 initSelects();
-initFonts();   // フォントが決まった時点で refresh() まで進む
 refresh();
-renderJobList();
 setConnected(false);
+(async () => {
+  await initFonts();   // フォントが決まった時点で refresh() まで進む
+  await restoreSession();
+  refresh();
+  await renderJobList();
+  saveReady = true;
+})();
 
 /** バックエンドが動いているか確認する */
 async function initTransport() {
@@ -1551,8 +1827,8 @@ async function initTransport() {
   if (!backendState) {
     btAvailable = false;
     updateBackendState();
-    $('btn-connect').disabled = true;
-    log(t('Cannot reach the backend. Only preview and saving command bytes work.'), 'warn');
+    setConnectDisabled(true);
+    log(t('Cannot reach the backend. Only preview and saving command bytes work.'), 'warn', { toast: true });
     return;
   }
 
@@ -1571,24 +1847,21 @@ async function initTransport() {
   }
 }
 
+/** Says why Connect can't work (no backend, no Bluetooth); stays hidden when all is well. */
 function updateBackendState() {
   const el = $('backend-state');
+  let problem = '';
   if (!backendState) {
-    el.textContent = t('Backend not running (start it with npm start or Docker).');
-    return;
-  }
-  if (connKind() === 'network') {
-    el.textContent = t('Server {version} — Wi-Fi printing over UDP/TCP 9100', { version: backendState.version || '' });
-    $('btn-connect').disabled = false;
-  } else if (btAvailable) {
-    el.textContent = t('Server {version} ({platform}) — Bluetooth available',
-      { version: backendState.version || '', platform: backendState.platform });
-    $('btn-connect').disabled = false;
+    problem = t('Backend not running (start it with npm start or Docker).');
+  } else if (connKind() === 'network' || btAvailable) {
+    setConnectDisabled(false);
   } else {
-    el.textContent = t('Bluetooth is not available on the server: {reason}',
+    problem = t('Bluetooth is not available on the server: {reason}',
       { reason: backendState.rfcommError || t('unknown reason') });
-    $('btn-connect').disabled = true;
+    setConnectDisabled(true);
   }
+  el.textContent = problem;
+  el.hidden = !problem;
 }
 
 $('auto-tape').checked = prefs.get('auto-tape') !== '0';

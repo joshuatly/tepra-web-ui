@@ -45,9 +45,11 @@ stream. The server opens the print session with the printer and streams the job 
 - Half cut: the blank the printer feeds in front of the label is half-cut and stays on as an
   easy-peel tab (on by default for the SR5900P / SR-R7900P), plus optional half cuts between labels
 - Batch jobs: queue several different labels and print them in one go; save/load as JSON
+- The label you're editing, its print settings and the batch are kept in the browser, so a
+  reload doesn't lose them
 - Saved printers (kept in a Docker volume), optional pre-configuration via environment variable
 - LAN discovery (UDP broadcast)
-- Works on phones: responsive layout with a sticky print bar
+- Works on phones: responsive layout with the preview on top and a sticky print bar
 - English and Japanese UI: follows the browser's language, with a switcher in the page footer
 - `POST /api/print/image`: print a PNG from scripts or home automation, no browser needed
 - Bluetooth Classic (RFCOMM) for SR-R2500P / SR-MK1 / SR-R7900P when you run the server
