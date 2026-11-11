@@ -259,14 +259,18 @@ await test('a lost reply to the lock request still releases the print session', 
   }
 });
 
-await test('an error reported only in ER2 refuses the job', async () => {
-  // the "unidentified" SR5900P status captured by uzuna/sr5900p: ER = 0, ER2 = 66 (tape end)
-  const fake = await startFakePrinter({ port: PORT + 4, quiet: true, er2: 66 });
+await test('an earlier error left only in ER2 does not stop the job', async () => {
+  // the "unidentified" SR5900P status captured by uzuna/sr5900p: ER = 0, ER2 = 66 (tape end).
+  // The printer prints from it; refusing it made the job after a tape-end report fail.
+  const fake = await startFakePrinter({ port: PORT + 4, quiet: true, printMs: 50, er2: 66 });
   try {
     const printer = new NetworkPrinter('127.0.0.1', fastOpts(PORT + 4));
-    await assert.rejects(printer.print(smallJob(), { tapeCode: 4 }), /Tape end/);
+    const logs = [];
+    printer.on('log', ({ message }) => logs.push(message));
+    await printer.print(smallJob(), { tapeCode: 4 });
+    assert.equal(fake.state.jobs.length, 1);
     assert.equal(fake.state.locked, false);
-    assert.equal(fake.state.jobs.length, 0);
+    assert.ok(logs.some((m) => /earlier error: Tape end/.test(m)), logs.join('\n'));
   } finally {
     await fake.close();
   }

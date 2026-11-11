@@ -81,14 +81,20 @@ export function parseStatusBody(b, statusLength) {
 }
 
 /**
- * The device error the status reports, or 0.
+ * The device error the status reports, or 0: ER (byte 2), the PrintCoreDeviceStatus code.
  *
- * ER (byte 2) is the main error code, but the printer can report an error in ER2
- * (byte 14 of the 20/24/78-byte bodies) with ER still 0: uzuna/sr5900p captured
- * `ER = 0, ER2 = 66 (tape end)` from an SR5900P. Both use the PrintCoreDeviceStatus codes.
+ * ER2 (byte 14 of the 20/24/78-byte bodies) is not counted. On an SR5900P it keeps the
+ * code of an earlier error after ER has gone back to 0. uzuna/sr5900p captured
+ * `ER = 0, ER2 = 66 (tape end)` and treats that body as idle, and the printer prints from it.
+ * Use latchedErrorCode() to read it for diagnostics.
  */
 export function deviceErrorCode(s) {
-  return s.ER || s.ER2 || 0;
+  return s.ER || 0;
+}
+
+/** ER2 when it holds a code that ER does not (an earlier, latched error), or 0. */
+export function latchedErrorCode(s) {
+  return !s.ER && s.ER2 ? s.ER2 : 0;
 }
 
 /** AccessManagerBluetooth.parseStatusCode(): "ST:xx" 形式から 16 進 2 桁を読む */
