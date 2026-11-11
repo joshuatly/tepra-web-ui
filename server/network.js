@@ -25,7 +25,7 @@ import dns from 'node:dns';
 import net from 'node:net';
 import os from 'node:os';
 import { EventEmitter } from 'node:events';
-import { parseStatusBody, deviceErrorCode } from '../app/status.js';
+import { parseStatusBody, deviceErrorCode, latchedErrorCode } from '../app/status.js';
 import { DEVICE_ERROR, PRINTER_STATUS, tapeWidthLabel } from '../app/models.js';
 
 export const DEFAULT_PORT = 9100;
@@ -100,7 +100,9 @@ export function describeStatus(s) {
   const state = PRINTER_STATUS[s.ST] ?? `state 0x${s.ST.toString(16)}`;
   const code = deviceErrorCode(s);
   const err = code ? `, error: ${DEVICE_ERROR[code] ?? `code ${code}`}` : '';
-  return `${state}, tape ${tapeWidthLabel(s.tapeWidthCode)}${err}`;
+  const latched = latchedErrorCode(s);
+  const note = latched ? ` (earlier error: ${DEVICE_ERROR[latched] ?? `code ${latched}`})` : '';
+  return `${state}, tape ${tapeWidthLabel(s.tapeWidthCode)}${err}${note}`;
 }
 
 /** Error for a request the printer did not answer; `code` is 'ETIMEDOUT'. */
@@ -269,6 +271,7 @@ export class NetworkPrinter extends EventEmitter {
   _checkError(s) {
     const code = deviceErrorCode(s);
     if (code !== 0) {
+      if (s.raw) this.log(`Status bytes: ${s.raw}`, 'warn');
       throw new Error(`Printer error: ${DEVICE_ERROR[code] ?? `code ${code}`}`);
     }
   }
